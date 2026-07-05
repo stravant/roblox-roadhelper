@@ -223,7 +223,16 @@ local function createRoadSession(plugin: Plugin)
 		if activeRecording then
 			return
 		end
-		activeRecording = ChangeHistoryService:TryBeginRecording("RoadHelper " .. name) :: any
+		local recording = ChangeHistoryService:TryBeginRecording("RoadHelper " .. name)
+		if not recording then
+			-- Without a recording every individual property change gets auto
+			-- committed as its own undo waypoint, fragmenting undo. This
+			-- happens when some other plugin (or a previous error) left a
+			-- recording dangling; nothing we can do but flag it clearly.
+			warn("RoadHelper: Couldn't begin an undo recording (another recording is in progress). " ..
+				"Undo will be fragmented for this gesture. If this persists, restarting Studio clears stuck recordings.")
+		end
+		activeRecording = recording :: any
 	end
 
 	local function finishRecording()
@@ -265,7 +274,12 @@ local function createRoadSession(plugin: Plugin)
 		for _, target in moveTargets do
 			local info = RoadMath.getSegmentInfo(target.Model)
 			if info then
-				applySolution(target.Model, RoadMath.solveMove(info, target.Id, newWorldPosition))
+				local ok, err = pcall(function()
+					applySolution(target.Model, RoadMath.solveMove(info, target.Id, newWorldPosition))
+				end)
+				if not ok then
+					warn("RoadHelper: Endpoint move failed: " .. tostring(err))
+				end
 			end
 		end
 		updateDragger()
@@ -321,7 +335,12 @@ local function createRoadSession(plugin: Plugin)
 			local newValue = target.StartValues[axis] + target.Signs[axis] * deltaDegrees
 			-- Keep the stored angles tidy
 			newValue = math.round(newValue * 1000) / 1000
-			target.Ref.Model:SetAttribute(name, newValue)
+			local ok, err = pcall(function()
+				target.Ref.Model:SetAttribute(name, newValue)
+			end)
+			if not ok then
+				warn("RoadHelper: Angle change failed: " .. tostring(err))
+			end
 		end
 		changeSignal:Fire()
 	end
@@ -429,7 +448,12 @@ local function createRoadSession(plugin: Plugin)
 		end
 		local info = RoadMath.getSegmentInfo(ref.Model)
 		if info then
-			applySolution(ref.Model, RoadMath.solveMove(info, ref.Id, worldPosition))
+			local ok, err = pcall(function()
+				applySolution(ref.Model, RoadMath.solveMove(info, ref.Id, worldPosition))
+			end)
+			if not ok then
+				warn("RoadHelper: Segment placement failed: " .. tostring(err))
+			end
 		end
 		updateDragger()
 		changeSignal:Fire()
