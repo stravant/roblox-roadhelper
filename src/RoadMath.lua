@@ -104,12 +104,21 @@ end
 
 function RoadMath.findSegments(root: Instance): { SegmentInfo }
 	local segments = {}
-	for _, descendant in root:GetDescendants() do
-		local info = RoadMath.getSegmentInfo(descendant)
-		if info then
-			table.insert(segments, info)
+	-- Recurse manually so we can prune: segments never contain other segments
+	-- (their contents are just the generator and generated geometry), and
+	-- BaseParts never contain them either. This keeps rescans cheap even in
+	-- places with a lot of generated road geometry.
+	local function visit(container: Instance)
+		for _, child in container:GetChildren() do
+			local info = RoadMath.getSegmentInfo(child)
+			if info then
+				table.insert(segments, info)
+			elseif not child:IsA("BasePart") then
+				visit(child)
+			end
 		end
 	end
+	visit(root)
 	return segments
 end
 

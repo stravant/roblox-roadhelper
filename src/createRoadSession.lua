@@ -1,0 +1,655 @@
+--!strict
+--[[
+	createRoadSession: The active RoadHelper tool session.
+
+	Mounts a DraggerFramework DraggerToolComponent with a custom handle list:
+	- EndpointPickHandles: clickable markers on every road endpoint
+	- EndpointMoveHandles: move the selected endpoint (resizes segments)
+	- EndpointRotateHandles: edit the Adjust dir/grade/bank angles
+	- AddHandles: append segments off an open endpoint
+
+	The session tracks the selected endpoint as a (model, endpoint id) pair and
+	re-derives world frames from live instance state, so external edits and
+	undo/redo stay consistent. All edits are wrapped in ChangeHistoryService
+	recordings.
+]]
+
+local CoreGui = game:GetService("CoreGui")
+local ChangeHistoryService = game:GetService("ChangeHistoryService")
+local RunService = game:GetService("RunService")
+
+local Packages = script.Parent.Parent.Packages
+
+local DraggerFramework = require(Packages.DraggerFramework)
+local DraggerSchemaCore = require(Packages.DraggerSchemaCore)
+local Roact = require(Packages.Roact)
+local Signal = require(Packages.Signal)
+
+local DraggerContext_PluginImpl = (require :: any)(DraggerFramework.Implementation.DraggerContext_PluginImpl)
+local DraggerToolComponent = (require :: any)(DraggerFramework.DraggerTools.DraggerToolComponent)
+
+local RoadMath = require("./RoadMath")
+local EndpointPickHandles = require("./Handles/EndpointPickHandles")
+local EndpointMoveHandles = require("./Handles/EndpointMoveHandles")
+local EndpointRotateHandles = require("./Handles/EndpointRotateHandles")
+local AddHandles = require("./Handles/AddHandles")
+
+local REFRESH_INTERVAL = 0.25
+
+local ADJUST_AXES: { RoadMath.AdjustAxis } = { "Dir", "Grade", "Bank" }
+
+export type EndpointRef = {
+	Model: Model,
+	Id: RoadMath.EndpointId,
+}
+
+export type SelectionState = {
+	Kind: "none",
+} | {
+	Kind: "open" | "closed",
+	SegmentKind: RoadMath.SegmentKind,
+	EndpointId: RoadMath.EndpointId,
+	OtherSegmentKind: RoadMath.SegmentKind?,
+	Dir: number,
+	Grade: number,
+	Bank: number,
+}
+
+local function createFixedSelection(onCleared: () -> ())
+	local selectionChangedSignal = Signal.new()
+	return {
+		Get = function()
+			return {}
+		end,
+		Set = function(newSelection, _hint)
+			-- The dragger framework clicking on empty space clears the
+			-- selection: treat that as deselecting the endpoint.
+			if #newSelection == 0 then
+				onCleared()
+			end
+			task.defer(function()
+				selectionChangedSignal:Fire()
+			end)
+		end,
+		SelectionChanged = selectionChangedSignal,
+	}
+end
+
+local function createRoadSchema(getFocusCFrame: () -> CFrame)
+	local schema = table.clone(DraggerSchemaCore)
+	schema.getMouseTarget = function()
+		-- Clicks which don't hit one of our handles hit nothing
+		return nil
+	end
+	schema.addUndoWaypoint = function()
+		-- We manage undo with explicit recordings instead
+	end
+	schema.SelectionInfo = {
+		new = function(context, selection)
+			return {
+				isEmpty = function(self)
+					return false
+				end,
+				getBoundingBox = function(self)
+					return getFocusCFrame(), Vector3.zero, Vector3.zero
+				end,
+				getAllAttachments = function(self)
+					return {}
+				end,
+				getObjectsToTransform = function(self)
+					return {}, {}, {}
+				end,
+				getBasisObject = function(self)
+					return nil
+				end,
+				getOriginalCFrameMap = function(self)
+					return {}
+				end,
+				getTransformedCopy = function(self, globalTransform)
+					return self
+				end,
+			}
+		end,
+	} :: any
+	return schema
+end
+
+-- Attributes describing segment geometry rather than appearance; these are
+-- not copied onto newly added segments.
+local GEOMETRY_ATTRIBUTES = {
+	Flip = true,
+	AdjustBlueDir = true,
+	AdjustBlueGrade = true,
+	AdjustBlueBank = true,
+	AdjustRedDir = true,
+	AdjustRedGrade = true,
+	AdjustRedBank = true,
+}
+
+local function createRoadSession(plugin: Plugin)
+	local session = {}
+	local changeSignal = Signal.new()
+
+	--------------------------------------------------------------------------
+	-- State
+	--------------------------------------------------------------------------
+
+	local segments: { RoadMath.SegmentInfo } = {}
+	local selectedRef: EndpointRef? = nil
+	local activeRecording: string? = nil
+
+	local function rescanSegments()
+		segments = RoadMath.findSegments(workspace)
+	end
+	rescanSegments()
+
+	-- Resolve an endpoint ref against live instance state
+	local function resolveEndpoint(ref: EndpointRef?): RoadMath.Endpoint?
+		if not ref then
+			return nil
+		end
+		if not ref.Model.Parent then
+			return nil
+		end
+		local info = RoadMath.getSegmentInfo(ref.Model)
+		if not info then
+			return nil
+		end
+		return RoadMath.getEndpoint(info, ref.Id)
+	end
+
+	local function getSelectedEndpoint(): RoadMath.Endpoint?
+		local endpoint = resolveEndpoint(selectedRef)
+		if not endpoint and selectedRef then
+			-- Selected segment went away
+			selectedRef = nil
+			changeSignal:Fire()
+		end
+		return endpoint
+	end
+
+	local function getPartnerEndpoint(): RoadMath.Endpoint?
+		local selected = getSelectedEndpoint()
+		if not selected then
+			return nil
+		end
+		return RoadMath.findJoint(selected, segments)
+	end
+
+	--------------------------------------------------------------------------
+	-- Dragger context and schema
+	--------------------------------------------------------------------------
+
+	local fixedSelection = createFixedSelection(function()
+		if selectedRef then
+			selectedRef = nil
+			changeSignal:Fire()
+		end
+	end)
+
+	local draggerContext = DraggerContext_PluginImpl.new(
+		plugin,
+		game,
+		settings(),
+		fixedSelection
+	)
+
+	local schema = createRoadSchema(function()
+		local endpoint = getSelectedEndpoint()
+		return if endpoint then endpoint.WorldCFrame else CFrame.identity
+	end)
+
+	local function updateDragger()
+		fixedSelection.SelectionChanged:Fire()
+	end
+
+	--------------------------------------------------------------------------
+	-- Undo recordings
+	--------------------------------------------------------------------------
+
+	local function beginRecording(name: string)
+		if activeRecording then
+			return
+		end
+		activeRecording = ChangeHistoryService:TryBeginRecording("RoadHelper " .. name) :: any
+	end
+
+	local function finishRecording()
+		if activeRecording then
+			ChangeHistoryService:FinishRecording(activeRecording, Enum.FinishRecordingOperation.Commit)
+			activeRecording = nil
+		end
+	end
+
+	--------------------------------------------------------------------------
+	-- Edit operations
+	--------------------------------------------------------------------------
+
+	local function applySolution(model: Model, solution: RoadMath.MoveSolution)
+		(model :: any).Size = solution.Size
+		model:SetAttribute("Flip", solution.Flip)
+		model:PivotTo(solution.Pivot)
+	end
+
+	-- Move targets are captured at drag start: the selected end plus the mated
+	-- partner end if the endpoint is closed.
+	local moveTargets: { EndpointRef } = {}
+
+	local function startMove()
+		moveTargets = {}
+		local selected = getSelectedEndpoint()
+		if not selected then
+			return
+		end
+		table.insert(moveTargets, { Model = selected.Segment.Model, Id = selected.Id })
+		local partner = getPartnerEndpoint()
+		if partner then
+			table.insert(moveTargets, { Model = partner.Segment.Model, Id = partner.Id })
+		end
+		beginRecording("Move Endpoint")
+	end
+
+	local function applyMove(newWorldPosition: Vector3)
+		for _, target in moveTargets do
+			local info = RoadMath.getSegmentInfo(target.Model)
+			if info then
+				applySolution(target.Model, RoadMath.solveMove(info, target.Id, newWorldPosition))
+			end
+		end
+		rescanSegments()
+		updateDragger()
+		changeSignal:Fire()
+	end
+
+	local function endMove()
+		moveTargets = {}
+		finishRecording()
+		changeSignal:Fire()
+	end
+
+	-- Rotation: capture the attached ends and their starting attribute values,
+	-- then apply cumulative deltas with per-end sign mapping.
+	type RotateTarget = {
+		Ref: EndpointRef,
+		Signs: { [RoadMath.AdjustAxis]: number },
+		StartValues: { [RoadMath.AdjustAxis]: number },
+	}
+	local rotateTargets: { RotateTarget } = {}
+
+	local function captureRotateTarget(selected: RoadMath.Endpoint, endpoint: RoadMath.Endpoint): RotateTarget
+		local signs = {}
+		local startValues = {}
+		for _, axis in ADJUST_AXES do
+			signs[axis] = RoadMath.adjustDeltaSign(selected, endpoint, axis)
+			startValues[axis] = RoadMath.getAdjustValue(endpoint, axis)
+		end
+		return {
+			Ref = { Model = endpoint.Segment.Model, Id = endpoint.Id },
+			Signs = signs,
+			StartValues = startValues,
+		}
+	end
+
+	local function startRotate()
+		rotateTargets = {}
+		local selected = getSelectedEndpoint()
+		if not selected then
+			return
+		end
+		table.insert(rotateTargets, captureRotateTarget(selected, selected))
+		local partner = getPartnerEndpoint()
+		if partner then
+			table.insert(rotateTargets, captureRotateTarget(selected, partner))
+		end
+		beginRecording("Rotate Endpoint")
+	end
+
+	local function applyRotate(axis: RoadMath.AdjustAxis, deltaDegrees: number)
+		for _, target in rotateTargets do
+			local name = RoadMath.adjustAttributeName(target.Ref.Id, axis)
+			local newValue = target.StartValues[axis] + target.Signs[axis] * deltaDegrees
+			-- Keep the stored angles tidy
+			newValue = math.round(newValue * 1000) / 1000
+			target.Ref.Model:SetAttribute(name, newValue)
+		end
+		changeSignal:Fire()
+	end
+
+	local function endRotate()
+		rotateTargets = {}
+		finishRecording()
+		changeSignal:Fire()
+	end
+
+	--------------------------------------------------------------------------
+	-- Adding segments
+	--------------------------------------------------------------------------
+
+	local function findTemplate(kind: RoadMath.SegmentKind, near: Vector3?): RoadMath.SegmentInfo?
+		local best: RoadMath.SegmentInfo? = nil
+		local bestDistance = math.huge
+		for _, segment in segments do
+			if segment.Kind == kind then
+				local distance = if near then (segment.Pivot.Position - near).Magnitude else 0
+				if distance < bestDistance then
+					bestDistance = distance
+					best = segment
+				end
+			end
+		end
+		return best
+	end
+
+	-- Create a new segment joined to `openEnd`, cloned from a template of the
+	-- right kind with appearance attributes copied from the segment being
+	-- extended. Returns the new model and its far (still open) endpoint id.
+	local function createJoinedSegment(openEnd: RoadMath.Endpoint, turn: RoadMath.TurnDirection): (Model?, RoadMath.EndpointId?)
+		local sourceModel = openEnd.Segment.Model
+		local width = openEnd.Segment.Width
+		local kind, joinId, pivot, size = RoadMath.placeNewSegment(openEnd, turn, width)
+
+		local template = if openEnd.Segment.Kind == kind
+			then openEnd.Segment
+			else findTemplate(kind, openEnd.WorldCFrame.Position)
+		if not template then
+			warn(`RoadHelper: No {kind} road segment found in the place to use as a template.`)
+			return nil, nil
+		end
+
+		local newModel = template.Model:Clone()
+		-- Drop the stale generated geometry; it regenerates for the new size
+		local generated = newModel:FindFirstChild("Generated")
+		if generated then
+			generated:Destroy()
+		end
+
+		-- Appearance follows the segment being extended
+		for name, value in sourceModel:GetAttributes() do
+			if not GEOMETRY_ATTRIBUTES[name] then
+				newModel:SetAttribute(name, value)
+			end
+		end
+		newModel:SetAttribute("Flip", false)
+		for _, axis in ADJUST_AXES do
+			newModel:SetAttribute(RoadMath.adjustAttributeName("Blue", axis), 0)
+			newModel:SetAttribute(RoadMath.adjustAttributeName("Red", axis), 0)
+		end
+		-- The joining end must mate with the open end's grade/bank
+		local matching = RoadMath.matchingAdjust(openEnd, joinId)
+		newModel:SetAttribute(RoadMath.adjustAttributeName(joinId, "Grade"), matching.Grade)
+		newModel:SetAttribute(RoadMath.adjustAttributeName(joinId, "Bank"), matching.Bank);
+
+		(newModel :: any).Size = size
+		newModel:PivotTo(pivot)
+		newModel.Parent = sourceModel.Parent
+
+		local farId: RoadMath.EndpointId = if joinId == "Blue" then "Red" else "Blue"
+		return newModel, farId
+	end
+
+	-- Add-drag state (from AddHandles)
+	local addDragRef: EndpointRef? = nil
+
+	local function startAdd(turn: RoadMath.TurnDirection): number?
+		local selected = getSelectedEndpoint()
+		if not selected then
+			return nil
+		end
+		beginRecording("Add Segment")
+		local newModel, farId = createJoinedSegment(selected, turn)
+		if not newModel or not farId then
+			finishRecording()
+			return nil
+		end
+		addDragRef = { Model = newModel, Id = farId }
+		selectedRef = addDragRef
+		rescanSegments()
+		updateDragger()
+		changeSignal:Fire()
+		local farEndpoint = resolveEndpoint(addDragRef)
+		return if farEndpoint then farEndpoint.WorldCFrame.Position.Y else 0
+	end
+
+	local function applyAddDrag(worldPosition: Vector3)
+		local ref = addDragRef
+		if not ref then
+			return
+		end
+		local info = RoadMath.getSegmentInfo(ref.Model)
+		if info then
+			applySolution(ref.Model, RoadMath.solveMove(info, ref.Id, worldPosition))
+		end
+		rescanSegments()
+		updateDragger()
+		changeSignal:Fire()
+	end
+
+	local function endAdd()
+		addDragRef = nil
+		finishRecording()
+		changeSignal:Fire()
+	end
+
+	-- Add a free-standing segment in front of the camera (UI buttons)
+	local function addInFrontOfCamera(kind: RoadMath.SegmentKind)
+		local camera = workspace.CurrentCamera
+		if not camera then
+			return
+		end
+		local template = findTemplate(kind, camera.CFrame.Position)
+		if not template then
+			warn(`RoadHelper: No {kind} road segment found in the place to use as a template.`)
+			return
+		end
+		local width = template.Width
+
+		-- Aim at what the camera is looking at, or a point ahead of the camera
+		local raycastParams = RaycastParams.new()
+		raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+		raycastParams.FilterDescendantsInstances = {}
+		local result = workspace:Raycast(camera.CFrame.Position, camera.CFrame.LookVector * 500, raycastParams)
+		local target = if result
+			then result.Position
+			else camera.CFrame.Position + camera.CFrame.LookVector * 200
+
+		local look = camera.CFrame.LookVector * Vector3.new(1, 0, 1)
+		look = if look.Magnitude > 0.01 then look.Unit else Vector3.zAxis
+		local yaw = math.atan2(look.X, look.Z)
+		local rotation = CFrame.Angles(0, yaw, 0)
+
+		local size = if kind == "Straight"
+			then Vector3.new(width, 0, math.max(2 * width, RoadMath.MIN_LENGTH))
+			else Vector3.new(2 * width, 0, 2 * width)
+
+		beginRecording("Add Segment")
+		local newModel = template.Model:Clone()
+		local generated = newModel:FindFirstChild("Generated")
+		if generated then
+			generated:Destroy()
+		end
+		newModel:SetAttribute("Flip", false)
+		for _, axis in ADJUST_AXES do
+			newModel:SetAttribute(RoadMath.adjustAttributeName("Blue", axis), 0)
+			newModel:SetAttribute(RoadMath.adjustAttributeName("Red", axis), 0)
+		end
+
+		-- Place the blue end nearest the camera, road extending away
+		local blueLocal = RoadMath.localEndpointFrame(kind, size, width, false, "Blue");
+		(newModel :: any).Size = size
+		newModel:PivotTo(rotation + (target - rotation:VectorToWorldSpace(blueLocal.Position)))
+		newModel.Parent = template.Model.Parent
+		finishRecording()
+
+		selectedRef = { Model = newModel, Id = "Red" }
+		rescanSegments()
+		updateDragger()
+		changeSignal:Fire()
+	end
+
+	--------------------------------------------------------------------------
+	-- Handles
+	--------------------------------------------------------------------------
+
+	local function getAllEndpoints(): { RoadMath.Endpoint }
+		local endpoints = {}
+		for _, segment in segments do
+			local blue, red = RoadMath.getEndpoints(segment)
+			table.insert(endpoints, blue)
+			table.insert(endpoints, red)
+		end
+		return endpoints
+	end
+
+	local function isSelected(endpoint: RoadMath.Endpoint): boolean
+		local ref = selectedRef
+		return ref ~= nil and ref.Model == endpoint.Segment.Model and ref.Id == endpoint.Id
+	end
+
+	local handlesList = {
+		EndpointMoveHandles.new(draggerContext, {
+			GetEndpointCFrame = function()
+				local endpoint = getSelectedEndpoint()
+				return if endpoint then endpoint.WorldCFrame else nil
+			end,
+			StartMove = startMove,
+			ApplyMove = applyMove,
+			EndMove = endMove,
+		}),
+		EndpointRotateHandles.new(draggerContext, {
+			GetEndpointCFrame = function()
+				local endpoint = getSelectedEndpoint()
+				return if endpoint then endpoint.WorldCFrame else nil
+			end,
+			StartRotate = startRotate,
+			ApplyRotate = applyRotate,
+			EndRotate = endRotate,
+		}),
+		AddHandles.new(draggerContext, {
+			GetOpenEndpoint = function()
+				local endpoint = getSelectedEndpoint()
+				if not endpoint then
+					return nil
+				end
+				if getPartnerEndpoint() then
+					return nil -- Closed endpoints can't be extended
+				end
+				return endpoint
+			end,
+			StartAdd = startAdd,
+			ApplyAddDrag = applyAddDrag,
+			EndAdd = endAdd,
+		}),
+		EndpointPickHandles.new(draggerContext, {
+			GetEndpoints = getAllEndpoints,
+			IsSelected = isSelected,
+			Select = function(endpoint: RoadMath.Endpoint)
+				selectedRef = { Model = endpoint.Segment.Model, Id = endpoint.Id }
+				updateDragger()
+				changeSignal:Fire()
+			end,
+		}),
+	}
+
+	local rootElement = Roact.createElement(DraggerToolComponent, {
+		Mouse = plugin:GetMouse(),
+		DraggerContext = draggerContext,
+		DraggerSchema = schema,
+		DraggerSettings = {
+			AllowDragSelect = false,
+			AnalyticsName = "RoadHelper",
+			HandlesList = handlesList,
+		},
+	})
+	local draggerHandle = Roact.mount(rootElement)
+
+	--------------------------------------------------------------------------
+	-- Refresh loop
+	--------------------------------------------------------------------------
+
+	-- Rescan periodically so external edits (undo/redo, manual property
+	-- changes, deletions) are picked up.
+	local refreshAccumulator = 0
+	local heartbeatCn = RunService.Heartbeat:Connect(function(dt: number)
+		refreshAccumulator += dt
+		if refreshAccumulator < REFRESH_INTERVAL then
+			return
+		end
+		refreshAccumulator = 0
+		rescanSegments()
+		updateDragger()
+	end)
+
+	local undoCn = ChangeHistoryService.OnUndo:Connect(function()
+		rescanSegments()
+		updateDragger()
+		changeSignal:Fire()
+	end)
+	local redoCn = ChangeHistoryService.OnRedo:Connect(function()
+		rescanSegments()
+		updateDragger()
+		changeSignal:Fire()
+	end)
+
+	--------------------------------------------------------------------------
+	-- Public API
+	--------------------------------------------------------------------------
+
+	session.ChangeSignal = changeSignal
+
+	function session.GetSelectionState(): SelectionState
+		local selected = getSelectedEndpoint()
+		if not selected then
+			return { Kind = "none" :: "none" }
+		end
+		local partner = getPartnerEndpoint()
+		return {
+			Kind = if partner then "closed" else "open",
+			SegmentKind = selected.Segment.Kind,
+			EndpointId = selected.Id,
+			OtherSegmentKind = if partner then partner.Segment.Kind else nil,
+			Dir = RoadMath.getAdjustValue(selected, "Dir"),
+			Grade = RoadMath.getAdjustValue(selected, "Grade"),
+			Bank = RoadMath.getAdjustValue(selected, "Bank"),
+		} :: any
+	end
+
+	-- Set an absolute Adjust value on the selected end (from the UI), applying
+	-- the equivalent delta to the mated partner end to keep the joint sealed.
+	function session.SetAdjustValue(axis: RoadMath.AdjustAxis, value: number)
+		local selected = getSelectedEndpoint()
+		if not selected then
+			return
+		end
+		local delta = value - RoadMath.getAdjustValue(selected, axis)
+		beginRecording("Set Angle")
+		local function applyTo(endpoint: RoadMath.Endpoint)
+			local sign = RoadMath.adjustDeltaSign(selected, endpoint, axis)
+			local name = RoadMath.adjustAttributeName(endpoint.Id, axis)
+			endpoint.Segment.Model:SetAttribute(name, RoadMath.getAdjustValue(endpoint, axis) + sign * delta)
+		end
+		applyTo(selected)
+		local partner = getPartnerEndpoint()
+		if partner then
+			applyTo(partner)
+		end
+		finishRecording()
+		updateDragger()
+		changeSignal:Fire()
+	end
+
+	session.AddInFrontOfCamera = addInFrontOfCamera
+
+	function session.Destroy()
+		heartbeatCn:Disconnect()
+		undoCn:Disconnect()
+		redoCn:Disconnect()
+		finishRecording()
+		Roact.unmount(draggerHandle)
+	end
+
+	return session
+end
+
+export type RoadSession = typeof(createRoadSession(...))
+
+return createRoadSession
