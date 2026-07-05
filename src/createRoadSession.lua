@@ -211,8 +211,27 @@ local function createRoadSession(plugin: Plugin)
 		return if endpoint then endpoint.WorldCFrame else CFrame.identity
 	end)
 
+	-- Whether a handle drag gesture (move/rotate/add) is in progress
+	local gestureActive = false
+
+	-- Nudge the dragger framework to re-read state. NEVER do this during an
+	-- active gesture: the framework responds to selection changes by
+	-- cancelling and re-initializing the current handle drag (re-invoking
+	-- mouseDown!), which restarts the gesture and can recurse infinitely when
+	-- fired from inside a handle callback. Deferred + coalesced for safety
+	-- against any other synchronous re-entrance.
+	local updateQueued = false
 	local function updateDragger()
-		fixedSelection.SelectionChanged:Fire()
+		if gestureActive or updateQueued then
+			return
+		end
+		updateQueued = true
+		task.defer(function()
+			updateQueued = false
+			if not gestureActive then
+				fixedSelection.SelectionChanged:Fire()
+			end
+		end)
 	end
 
 	--------------------------------------------------------------------------
@@ -267,6 +286,7 @@ local function createRoadSession(plugin: Plugin)
 		if partner then
 			table.insert(moveTargets, { Model = partner.Segment.Model, Id = partner.Id })
 		end
+		gestureActive = true
 		beginRecording("Move Endpoint")
 	end
 
@@ -282,13 +302,14 @@ local function createRoadSession(plugin: Plugin)
 				end
 			end
 		end
-		updateDragger()
 		changeSignal:Fire()
 	end
 
 	local function endMove()
 		moveTargets = {}
 		finishRecording()
+		gestureActive = false
+		updateDragger()
 		changeSignal:Fire()
 	end
 
@@ -326,6 +347,7 @@ local function createRoadSession(plugin: Plugin)
 		if partner then
 			table.insert(rotateTargets, captureRotateTarget(selected, partner))
 		end
+		gestureActive = true
 		beginRecording("Rotate Endpoint")
 	end
 
@@ -348,6 +370,8 @@ local function createRoadSession(plugin: Plugin)
 	local function endRotate()
 		rotateTargets = {}
 		finishRecording()
+		gestureActive = false
+		updateDragger()
 		changeSignal:Fire()
 	end
 
@@ -427,15 +451,16 @@ local function createRoadSession(plugin: Plugin)
 		if not selected then
 			return nil
 		end
+		gestureActive = true
 		beginRecording("Add Segment")
 		local newModel, farId = createJoinedSegment(selected, turn)
 		if not newModel or not farId then
 			finishRecording()
+			gestureActive = false
 			return nil
 		end
 		addDragRef = { Model = newModel, Id = farId }
 		selectedRef = addDragRef
-		updateDragger()
 		changeSignal:Fire()
 		local farEndpoint = resolveEndpoint(addDragRef)
 		return if farEndpoint then farEndpoint.WorldCFrame.Position.Y else 0
@@ -455,13 +480,14 @@ local function createRoadSession(plugin: Plugin)
 				warn("RoadHelper: Segment placement failed: " .. tostring(err))
 			end
 		end
-		updateDragger()
 		changeSignal:Fire()
 	end
 
 	local function endAdd()
 		addDragRef = nil
 		finishRecording()
+		gestureActive = false
+		updateDragger()
 		changeSignal:Fire()
 	end
 
