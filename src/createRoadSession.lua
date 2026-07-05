@@ -36,6 +36,8 @@ local AddHandles = require("./Handles/AddHandles")
 
 local REFRESH_INTERVAL = 0.25
 local JOINT_SEARCH_RADIUS = 10
+local REBIND_SEARCH_RADIUS = 8
+local REBIND_TOLERANCE = 2
 
 local ADJUST_AXES: { RoadMath.AdjustAxis } = { "Dir", "Grade", "Bank" }
 
@@ -138,6 +140,11 @@ local function createRoadSession(plugin: Plugin)
 	local selectedRef: EndpointRef? = nil
 	local activeRecording: string? = nil
 
+	-- Last successfully resolved state of the selection, used to re-bind it
+	-- when undo/redo destroys and recreates the selected segment's instance.
+	local lastKnownPosition: Vector3? = nil
+	local lastKnownKind: RoadMath.SegmentKind? = nil
+
 	-- Resolve an endpoint ref against live instance state
 	local function resolveEndpoint(ref: EndpointRef?): RoadMath.Endpoint?
 		if not ref then
@@ -153,12 +160,52 @@ local function createRoadSession(plugin: Plugin)
 		return RoadMath.getEndpoint(info, ref.Id)
 	end
 
+	-- The selected instance may have been destroyed and recreated by undo or
+	-- redo: look for a matching endpoint near the selection's last known
+	-- position and adopt it.
+	local function tryRebindSelection(): RoadMath.Endpoint?
+		local ref = selectedRef
+		local position = lastKnownPosition
+		if not ref or not position then
+			return nil
+		end
+		local parts = workspace:GetPartBoundsInRadius(position, REBIND_SEARCH_RADIUS)
+		local best: RoadMath.Endpoint? = nil
+		local bestDistance = REBIND_TOLERANCE
+		local seen: { [Model]: boolean } = {}
+		for _, part in parts do
+			local segment = RoadMath.segmentFromDescendant(part)
+			if segment and not seen[segment.Model] then
+				seen[segment.Model] = true
+				if lastKnownKind and segment.Kind ~= lastKnownKind then
+					continue
+				end
+				local endpoint = RoadMath.getEndpoint(segment, ref.Id)
+				local distance = (endpoint.WorldCFrame.Position - position).Magnitude
+				if distance <= bestDistance then
+					bestDistance = distance
+					best = endpoint
+				end
+			end
+		end
+		return best
+	end
+
 	local function getSelectedEndpoint(): RoadMath.Endpoint?
 		local endpoint = resolveEndpoint(selectedRef)
 		if not endpoint and selectedRef then
-			-- Selected segment went away
-			selectedRef = nil
-			changeSignal:Fire()
+			-- The selection is sticky: don't clear it just because the
+			-- instance can't currently be resolved (mid-undo, or destroyed
+			-- and about to be recreated by redo); try to re-bind instead and
+			-- otherwise keep waiting.
+			endpoint = tryRebindSelection()
+			if endpoint then
+				selectedRef = { Model = endpoint.Segment.Model, Id = endpoint.Id }
+			end
+		end
+		if endpoint then
+			lastKnownPosition = endpoint.WorldCFrame.Position
+			lastKnownKind = endpoint.Segment.Kind
 		end
 		return endpoint
 	end
@@ -195,6 +242,8 @@ local function createRoadSession(plugin: Plugin)
 	local fixedSelection = createFixedSelection(function()
 		if selectedRef then
 			selectedRef = nil
+			lastKnownPosition = nil
+			lastKnownKind = nil
 			changeSignal:Fire()
 		end
 	end)
