@@ -1,14 +1,13 @@
 --[[
-	EndpointPickHandles: Clickable sphere markers on every road segment endpoint.
-	Clicking a marker selects that endpoint in the session. Markers are recessed
-	slightly into their own segment so the two markers of a closed joint sit
-	side by side instead of overlapping.
+	EndpointPickHandles: On-demand endpoint picking. Instead of eagerly showing
+	markers for every endpoint in the place, hovering over road geometry
+	raycasts under the cursor, finds the segment it belongs to, and offers that
+	segment's nearer endpoint as a click target (shown as a hover marker).
+	The selected endpoint always shows its marker.
 ]]
 
 local Packages = script.Parent.Parent.Parent.Packages
 local Roact = require(Packages.Roact)
-local DraggerFramework = require(Packages.DraggerFramework)
-local Math = require(DraggerFramework.Utility.Math)
 
 local RoadMath = require(script.Parent.Parent.RoadMath)
 
@@ -16,13 +15,14 @@ local BLUE = Color3.fromRGB(70, 130, 255)
 local RED = Color3.fromRGB(255, 70, 70)
 local MARKER_RADIUS = 1.2
 local MARKER_INSET = 1.4
+local HOVER_HANDLE_ID = "RoadEndpointHover"
+local RAY_LENGTH = 10000
 
 local EndpointPickHandles = {}
 EndpointPickHandles.__index = EndpointPickHandles
 
 export type Props = {
-	GetEndpoints: () -> { RoadMath.Endpoint },
-	IsSelected: (endpoint: RoadMath.Endpoint) -> boolean,
+	GetSelectedEndpoint: () -> RoadMath.Endpoint?,
 	Select: (endpoint: RoadMath.Endpoint) -> (),
 }
 
@@ -30,25 +30,11 @@ function EndpointPickHandles.new(draggerContext, props: Props)
 	local self = {}
 	self._draggerContext = draggerContext
 	self._props = props
-	self._handles = {}
+	self._hoverEndpoint = nil
 	return setmetatable(self, EndpointPickHandles)
 end
 
 function EndpointPickHandles:update(draggerToolModel, selectionInfo)
-	local handles = {}
-	for index, endpoint in self._props.GetEndpoints() do
-		local frame = endpoint.WorldCFrame
-		local scale = self._draggerContext:getHandleScale(frame.Position)
-		local position = frame.Position - frame.LookVector * (MARKER_INSET * scale)
-		handles[index] = {
-			Endpoint = endpoint,
-			Position = position,
-			Radius = MARKER_RADIUS * scale,
-			Color = if endpoint.Id == "Blue" then BLUE else RED,
-			Selected = self._props.IsSelected(endpoint),
-		}
-	end
-	self._handles = handles
 end
 
 function EndpointPickHandles:shouldBiasTowardsObjects()
@@ -56,63 +42,73 @@ function EndpointPickHandles:shouldBiasTowardsObjects()
 end
 
 function EndpointPickHandles:hitTest(mouseRay, ignoreExtraThreshold)
-	local closestHandleId, closestDistance = nil, math.huge
-	for handleId, handle in self._handles do
-		local hit, distance = Math.intersectRaySphere(
-			mouseRay.Origin, mouseRay.Direction.Unit,
-			handle.Position, handle.Radius * 1.5)
-		if hit and distance and distance < closestDistance then
-			closestDistance = distance
-			closestHandleId = handleId
-		end
+	self._hoverEndpoint = nil
+	local result = workspace:Raycast(mouseRay.Origin, mouseRay.Direction.Unit * RAY_LENGTH)
+	if not result then
+		return nil, math.huge, false
 	end
-	-- Not always on top: markers should not steal clicks from the move and
-	-- rotate handles of the selected endpoint.
-	return closestHandleId, closestDistance, false
+	local segment = RoadMath.segmentFromDescendant(result.Instance)
+	if not segment then
+		return nil, math.huge, false
+	end
+	local blue, red = RoadMath.getEndpoints(segment)
+	local blueDistance = (blue.WorldCFrame.Position - result.Position).Magnitude
+	local redDistance = (red.WorldCFrame.Position - result.Position).Magnitude
+	self._hoverEndpoint = if blueDistance <= redDistance then blue else red
+	return HOVER_HANDLE_ID, result.Distance, false
+end
+
+local function isSameEndpoint(a: RoadMath.Endpoint?, b: RoadMath.Endpoint?): boolean
+	return a ~= nil and b ~= nil and a.Segment.Model == b.Segment.Model and a.Id == b.Id
+end
+
+function EndpointPickHandles:_renderMarker(key: string, endpoint: RoadMath.Endpoint, isSelectedMarker: boolean, children)
+	local frame = endpoint.WorldCFrame
+	local scale = self._draggerContext:getHandleScale(frame.Position)
+	local position = frame.Position - frame.LookVector * (MARKER_INSET * scale)
+	local radius = MARKER_RADIUS * scale
+	local color = if endpoint.Id == "Blue" then BLUE else RED
+	if isSelectedMarker then
+		radius *= 1.35
+	end
+	children[key] = Roact.createElement("SphereHandleAdornment", {
+		Adornee = workspace.Terrain,
+		CFrame = CFrame.new(position),
+		Radius = radius,
+		Color3 = color,
+		Transparency = if isSelectedMarker then 0 else 0.4,
+		AlwaysOnTop = false,
+		ZIndex = 0,
+	})
+	if isSelectedMarker then
+		children[key .. "Halo"] = Roact.createElement("SphereHandleAdornment", {
+			Adornee = workspace.Terrain,
+			CFrame = CFrame.new(position),
+			Radius = radius * 1.25,
+			Color3 = Color3.new(1, 1, 1),
+			Transparency = 0.6,
+			AlwaysOnTop = false,
+			ZIndex = 0,
+		})
+	end
 end
 
 function EndpointPickHandles:render(hoveredHandleId)
 	local children = {}
-	for handleId, handle in self._handles do
-		local hovered = handleId == hoveredHandleId
-		local radius = handle.Radius
-		local transparency = 0.35
-		if handle.Selected then
-			radius *= 1.35
-			transparency = 0
-		elseif hovered then
-			radius *= 1.2
-			transparency = 0
-		end
-		children["Marker" .. handleId] = Roact.createElement("SphereHandleAdornment", {
-			Adornee = workspace.Terrain,
-			CFrame = CFrame.new(handle.Position),
-			Radius = radius,
-			Color3 = handle.Color,
-			Transparency = transparency,
-			AlwaysOnTop = false,
-			ZIndex = 0,
-		})
-		-- Selected marker gets a highlight halo
-		if handle.Selected then
-			children["Halo" .. handleId] = Roact.createElement("SphereHandleAdornment", {
-				Adornee = workspace.Terrain,
-				CFrame = CFrame.new(handle.Position),
-				Radius = radius * 1.25,
-				Color3 = Color3.new(1, 1, 1),
-				Transparency = 0.6,
-				AlwaysOnTop = false,
-				ZIndex = 0,
-			})
-		end
+	local selected = self._props.GetSelectedEndpoint()
+	if selected then
+		self:_renderMarker("Selected", selected, true, children)
+	end
+	if hoveredHandleId == HOVER_HANDLE_ID and self._hoverEndpoint
+		and not isSameEndpoint(self._hoverEndpoint, selected) then
+		self:_renderMarker("Hover", self._hoverEndpoint, false, children)
 	end
 	return Roact.createElement("Folder", {}, children)
 end
 
 function EndpointPickHandles:mouseDown(mouseRay, handleId)
-	local handle = self._handles[handleId]
-	if handle then
-		self._props.Select(handle.Endpoint)
+	if handleId == HOVER_HANDLE_ID and self._hoverEndpoint then
+		self._props.Select(self._hoverEndpoint)
 	end
 end
 

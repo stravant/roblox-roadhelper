@@ -3,7 +3,7 @@
 	createRoadSession: The active RoadHelper tool session.
 
 	Mounts a DraggerFramework DraggerToolComponent with a custom handle list:
-	- EndpointPickHandles: clickable markers on every road endpoint
+	- EndpointPickHandles: on-demand endpoint picking under the cursor
 	- EndpointMoveHandles: move the selected endpoint (resizes segments)
 	- EndpointRotateHandles: edit the Adjust dir/grade/bank angles
 	- AddHandles: append segments off an open endpoint
@@ -35,6 +35,7 @@ local EndpointRotateHandles = require("./Handles/EndpointRotateHandles")
 local AddHandles = require("./Handles/AddHandles")
 
 local REFRESH_INTERVAL = 0.25
+local JOINT_SEARCH_RADIUS = 10
 
 local ADJUST_AXES: { RoadMath.AdjustAxis } = { "Dir", "Grade", "Bank" }
 
@@ -134,14 +135,8 @@ local function createRoadSession(plugin: Plugin)
 	-- State
 	--------------------------------------------------------------------------
 
-	local segments: { RoadMath.SegmentInfo } = {}
 	local selectedRef: EndpointRef? = nil
 	local activeRecording: string? = nil
-
-	local function rescanSegments()
-		segments = RoadMath.findSegments(workspace)
-	end
-	rescanSegments()
 
 	-- Resolve an endpoint ref against live instance state
 	local function resolveEndpoint(ref: EndpointRef?): RoadMath.Endpoint?
@@ -168,12 +163,29 @@ local function createRoadSession(plugin: Plugin)
 		return endpoint
 	end
 
+	-- Find the mated partner of the selected endpoint with an on-demand
+	-- spatial query around the endpoint, so we never have to eagerly inspect
+	-- the whole place.
 	local function getPartnerEndpoint(): RoadMath.Endpoint?
 		local selected = getSelectedEndpoint()
 		if not selected then
 			return nil
 		end
-		return RoadMath.findJoint(selected, segments)
+		local params = OverlapParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = { selected.Segment.Model }
+		local parts = workspace:GetPartBoundsInRadius(
+			selected.WorldCFrame.Position, JOINT_SEARCH_RADIUS, params)
+		local candidates: { RoadMath.SegmentInfo } = {}
+		local seen: { [Model]: boolean } = {}
+		for _, part in parts do
+			local segment = RoadMath.segmentFromDescendant(part)
+			if segment and not seen[segment.Model] then
+				seen[segment.Model] = true
+				table.insert(candidates, segment)
+			end
+		end
+		return RoadMath.findJoint(selected, candidates)
 	end
 
 	--------------------------------------------------------------------------
@@ -256,7 +268,6 @@ local function createRoadSession(plugin: Plugin)
 				applySolution(target.Model, RoadMath.solveMove(info, target.Id, newWorldPosition))
 			end
 		end
-		rescanSegments()
 		updateDragger()
 		changeSignal:Fire()
 	end
@@ -325,10 +336,12 @@ local function createRoadSession(plugin: Plugin)
 	-- Adding segments
 	--------------------------------------------------------------------------
 
+	-- Scan for a template on demand: this only happens on add clicks, never
+	-- per-frame, so a full workspace scan is acceptable.
 	local function findTemplate(kind: RoadMath.SegmentKind, near: Vector3?): RoadMath.SegmentInfo?
 		local best: RoadMath.SegmentInfo? = nil
 		local bestDistance = math.huge
-		for _, segment in segments do
+		for _, segment in RoadMath.findSegments(workspace) do
 			if segment.Kind == kind then
 				local distance = if near then (segment.Pivot.Position - near).Magnitude else 0
 				if distance < bestDistance then
@@ -403,7 +416,6 @@ local function createRoadSession(plugin: Plugin)
 		end
 		addDragRef = { Model = newModel, Id = farId }
 		selectedRef = addDragRef
-		rescanSegments()
 		updateDragger()
 		changeSignal:Fire()
 		local farEndpoint = resolveEndpoint(addDragRef)
@@ -419,7 +431,6 @@ local function createRoadSession(plugin: Plugin)
 		if info then
 			applySolution(ref.Model, RoadMath.solveMove(info, ref.Id, worldPosition))
 		end
-		rescanSegments()
 		updateDragger()
 		changeSignal:Fire()
 	end
@@ -481,7 +492,6 @@ local function createRoadSession(plugin: Plugin)
 		finishRecording()
 
 		selectedRef = { Model = newModel, Id = "Red" }
-		rescanSegments()
 		updateDragger()
 		changeSignal:Fire()
 	end
@@ -489,21 +499,6 @@ local function createRoadSession(plugin: Plugin)
 	--------------------------------------------------------------------------
 	-- Handles
 	--------------------------------------------------------------------------
-
-	local function getAllEndpoints(): { RoadMath.Endpoint }
-		local endpoints = {}
-		for _, segment in segments do
-			local blue, red = RoadMath.getEndpoints(segment)
-			table.insert(endpoints, blue)
-			table.insert(endpoints, red)
-		end
-		return endpoints
-	end
-
-	local function isSelected(endpoint: RoadMath.Endpoint): boolean
-		local ref = selectedRef
-		return ref ~= nil and ref.Model == endpoint.Segment.Model and ref.Id == endpoint.Id
-	end
 
 	local handlesList = {
 		EndpointMoveHandles.new(draggerContext, {
@@ -540,8 +535,7 @@ local function createRoadSession(plugin: Plugin)
 			EndAdd = endAdd,
 		}),
 		EndpointPickHandles.new(draggerContext, {
-			GetEndpoints = getAllEndpoints,
-			IsSelected = isSelected,
+			GetSelectedEndpoint = getSelectedEndpoint,
 			Select = function(endpoint: RoadMath.Endpoint)
 				selectedRef = { Model = endpoint.Segment.Model, Id = endpoint.Id }
 				updateDragger()
@@ -566,8 +560,9 @@ local function createRoadSession(plugin: Plugin)
 	-- Refresh loop
 	--------------------------------------------------------------------------
 
-	-- Rescan periodically so external edits (undo/redo, manual property
-	-- changes, deletions) are picked up.
+	-- Nudge the dragger periodically so the selected endpoint's handles track
+	-- external edits (manual property changes etc.); this reads only the
+	-- selected segment's live state, no scanning involved.
 	local refreshAccumulator = 0
 	local heartbeatCn = RunService.Heartbeat:Connect(function(dt: number)
 		refreshAccumulator += dt
@@ -575,17 +570,14 @@ local function createRoadSession(plugin: Plugin)
 			return
 		end
 		refreshAccumulator = 0
-		rescanSegments()
 		updateDragger()
 	end)
 
 	local undoCn = ChangeHistoryService.OnUndo:Connect(function()
-		rescanSegments()
 		updateDragger()
 		changeSignal:Fire()
 	end)
 	local redoCn = ChangeHistoryService.OnRedo:Connect(function()
-		rescanSegments()
 		updateDragger()
 		changeSignal:Fire()
 	end)

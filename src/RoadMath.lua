@@ -102,6 +102,19 @@ function RoadMath.getSegmentInfo(instance: Instance): SegmentInfo?
 	}
 end
 
+-- Walk up from (typically) a generated road part to the segment it belongs to
+function RoadMath.segmentFromDescendant(instance: Instance?): SegmentInfo?
+	local current = instance
+	while current and current ~= workspace and current ~= game do
+		local info = RoadMath.getSegmentInfo(current)
+		if info then
+			return info
+		end
+		current = current.Parent
+	end
+	return nil
+end
+
 function RoadMath.findSegments(root: Instance): { SegmentInfo }
 	local segments = {}
 	-- Recurse manually so we can prune: segments never contain other segments
