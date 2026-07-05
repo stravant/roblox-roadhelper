@@ -160,15 +160,10 @@ local function createRoadSession(plugin: Plugin)
 		return RoadMath.getEndpoint(info, ref.Id)
 	end
 
-	-- The selected instance may have been destroyed and recreated by undo or
-	-- redo: look for a matching endpoint near the selection's last known
-	-- position and adopt it.
-	local function tryRebindSelection(): RoadMath.Endpoint?
-		local ref = selectedRef
-		local position = lastKnownPosition
-		if not ref or not position then
-			return nil
-		end
+	-- Find an endpoint of the given end color (and optionally segment kind)
+	-- close to a world position. Used to re-bind the selection after undo and
+	-- redo destroy and recreate segment instances.
+	local function findEndpointNear(position: Vector3, kind: RoadMath.SegmentKind?, id: RoadMath.EndpointId): RoadMath.Endpoint?
 		local parts = workspace:GetPartBoundsInRadius(position, REBIND_SEARCH_RADIUS)
 		local best: RoadMath.Endpoint? = nil
 		local bestDistance = REBIND_TOLERANCE
@@ -177,10 +172,10 @@ local function createRoadSession(plugin: Plugin)
 			local segment = RoadMath.segmentFromDescendant(part)
 			if segment and not seen[segment.Model] then
 				seen[segment.Model] = true
-				if lastKnownKind and segment.Kind ~= lastKnownKind then
+				if kind and segment.Kind ~= kind then
 					continue
 				end
-				local endpoint = RoadMath.getEndpoint(segment, ref.Id)
+				local endpoint = RoadMath.getEndpoint(segment, id)
 				local distance = (endpoint.WorldCFrame.Position - position).Magnitude
 				if distance <= bestDistance then
 					bestDistance = distance
@@ -189,6 +184,15 @@ local function createRoadSession(plugin: Plugin)
 			end
 		end
 		return best
+	end
+
+	local function tryRebindSelection(): RoadMath.Endpoint?
+		local ref = selectedRef
+		local position = lastKnownPosition
+		if not ref or not position then
+			return nil
+		end
+		return findEndpointNear(position, lastKnownKind, ref.Id)
 	end
 
 	local function getSelectedEndpoint(): RoadMath.Endpoint?
@@ -208,6 +212,61 @@ local function createRoadSession(plugin: Plugin)
 			lastKnownKind = endpoint.Segment.Kind
 		end
 		return endpoint
+	end
+
+	type SelectionSnapshot = {
+		Position: Vector3,
+		Kind: RoadMath.SegmentKind,
+		Id: RoadMath.EndpointId,
+	}?
+
+	local function snapshotSelection(): SelectionSnapshot
+		local endpoint = resolveEndpoint(selectedRef)
+		if not endpoint then
+			return nil
+		end
+		return {
+			Position = endpoint.WorldCFrame.Position,
+			Kind = endpoint.Segment.Kind,
+			Id = endpoint.Id,
+		}
+	end
+
+	local function restoreSelection(snapshot: SelectionSnapshot)
+		if not snapshot then
+			selectedRef = nil
+			lastKnownPosition = nil
+			lastKnownKind = nil
+			return
+		end
+		lastKnownPosition = snapshot.Position
+		lastKnownKind = snapshot.Kind
+		local endpoint = findEndpointNear(snapshot.Position, snapshot.Kind, snapshot.Id)
+		if endpoint then
+			selectedRef = { Model = endpoint.Segment.Model, Id = endpoint.Id }
+		else
+			-- Leave a stale placeholder ref so the sticky re-bind machinery
+			-- keeps looking for an endpoint at this position (e.g. redo may
+			-- not have recreated the instance quite yet).
+			selectedRef = { Model = Instance.new("Model"), Id = snapshot.Id }
+		end
+	end
+
+	-- Selection history synchronized with the undo stack: operations which
+	-- change the selection (the adds) record what was selected before and
+	-- after, keyed by their undo waypoint name, so undoing an add brings the
+	-- previous selection back and redoing reselects the added segment's end.
+	type SelectionHistoryEntry = {
+		Name: string,
+		Before: SelectionSnapshot,
+		After: SelectionSnapshot,
+	}
+	local undoSelectionStack: { SelectionHistoryEntry } = {}
+	local redoSelectionStack: { SelectionHistoryEntry } = {}
+
+	local function pushSelectionHistory(name: string, before: SelectionSnapshot, after: SelectionSnapshot)
+		table.insert(undoSelectionStack, { Name = name, Before = before, After = after })
+		table.clear(redoSelectionStack)
 	end
 
 	-- Find the mated partner of the selected endpoint with an on-demand
@@ -287,10 +346,12 @@ local function createRoadSession(plugin: Plugin)
 	-- Undo recordings
 	--------------------------------------------------------------------------
 
+	local activeRecordingName: string? = nil
 	local function beginRecording(name: string)
 		if activeRecording then
 			return
 		end
+		activeRecordingName = "RoadHelper " .. name
 		local recording = ChangeHistoryService:TryBeginRecording("RoadHelper " .. name)
 		if not recording then
 			-- Without a recording every individual property change gets auto
@@ -494,6 +555,7 @@ local function createRoadSession(plugin: Plugin)
 
 	-- Add-drag state (from AddHandles)
 	local addDragRef: EndpointRef? = nil
+	local addBeforeSelection: SelectionSnapshot = nil
 
 	local function startAdd(turn: RoadMath.TurnDirection): number?
 		local selected = getSelectedEndpoint()
@@ -501,6 +563,7 @@ local function createRoadSession(plugin: Plugin)
 			return nil
 		end
 		gestureActive = true
+		addBeforeSelection = snapshotSelection()
 		beginRecording("Add Segment")
 		local newModel, farId = createJoinedSegment(selected, turn)
 		if not newModel or not farId then
@@ -534,6 +597,10 @@ local function createRoadSession(plugin: Plugin)
 
 	local function endAdd()
 		addDragRef = nil
+		if activeRecordingName then
+			pushSelectionHistory(activeRecordingName, addBeforeSelection, snapshotSelection())
+		end
+		addBeforeSelection = nil
 		finishRecording()
 		gestureActive = false
 		updateDragger()
@@ -571,6 +638,7 @@ local function createRoadSession(plugin: Plugin)
 			then Vector3.new(width, 0, math.max(2 * width, RoadMath.MIN_LENGTH))
 			else Vector3.new(2 * width, 0, 2 * width)
 
+		local beforeSelection = snapshotSelection()
 		beginRecording("Add Segment")
 		local newModel = template.Model:Clone()
 		local generated = newModel:FindFirstChild("Generated")
@@ -588,9 +656,12 @@ local function createRoadSession(plugin: Plugin)
 		(newModel :: any).Size = size
 		newModel:PivotTo(rotation + (target - rotation:VectorToWorldSpace(blueLocal.Position)))
 		newModel.Parent = template.Model.Parent
-		finishRecording()
 
 		selectedRef = { Model = newModel, Id = "Red" }
+		if activeRecordingName then
+			pushSelectionHistory(activeRecordingName, beforeSelection, snapshotSelection())
+		end
+		finishRecording()
 		updateDragger()
 		changeSignal:Fire()
 	end
@@ -680,11 +751,23 @@ local function createRoadSession(plugin: Plugin)
 		updateDragger()
 	end)
 
-	local undoCn = ChangeHistoryService.OnUndo:Connect(function()
+	local undoCn = ChangeHistoryService.OnUndo:Connect(function(waypointName: string)
+		local top = undoSelectionStack[#undoSelectionStack]
+		if top and top.Name == waypointName then
+			table.remove(undoSelectionStack)
+			table.insert(redoSelectionStack, top)
+			restoreSelection(top.Before)
+		end
 		updateDragger()
 		changeSignal:Fire()
 	end)
-	local redoCn = ChangeHistoryService.OnRedo:Connect(function()
+	local redoCn = ChangeHistoryService.OnRedo:Connect(function(waypointName: string)
+		local top = redoSelectionStack[#redoSelectionStack]
+		if top and top.Name == waypointName then
+			table.remove(redoSelectionStack)
+			table.insert(undoSelectionStack, top)
+			restoreSelection(top.After)
+		end
 		updateDragger()
 		changeSignal:Fire()
 	end)
