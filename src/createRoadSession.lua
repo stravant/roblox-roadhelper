@@ -587,6 +587,14 @@ local function createRoadSession(plugin: Plugin)
 		EndpointPickHandles.new(draggerContext, {
 			GetSelectedEndpoint = getSelectedEndpoint,
 			Select = function(endpoint: RoadMath.Endpoint)
+				-- Must be a no-op when re-selecting the same endpoint: the
+				-- framework responds to our selection-changed nudge by
+				-- re-initializing the click (calling mouseDown -> Select
+				-- again), so notifying unconditionally would loop forever.
+				local ref = selectedRef
+				if ref and ref.Model == endpoint.Segment.Model and ref.Id == endpoint.Id then
+					return
+				end
 				selectedRef = { Model = endpoint.Segment.Model, Id = endpoint.Id }
 				updateDragger()
 				changeSignal:Fire()
