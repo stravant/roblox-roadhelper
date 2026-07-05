@@ -17,6 +17,7 @@
 local CoreGui = game:GetService("CoreGui")
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local RunService = game:GetService("RunService")
+local Selection = game:GetService("Selection")
 
 local Packages = script.Parent.Parent.Packages
 
@@ -751,7 +752,31 @@ local function createRoadSession(plugin: Plugin)
 		updateDragger()
 	end)
 
+	-- HACK: Studio selects the instances affected by an undo/redo, which
+	-- during a road session means a pile of (regenerated) road parts gets
+	-- highlighted. Clear any road-related Studio selection shortly after; a
+	-- selection of non-road instances is left alone.
+	local sessionAlive = true
+	local function clearStudioSelectionAfterHistory()
+		local function clearIfRoadRelated()
+			if not sessionAlive then
+				return
+			end
+			for _, instance in Selection:Get() do
+				if RoadMath.segmentFromDescendant(instance) then
+					Selection:Set({})
+					return
+				end
+			end
+		end
+		-- Once right after the history operation settles, and once the next
+		-- frame in case Studio applies its selection late.
+		task.defer(clearIfRoadRelated)
+		task.delay(0, clearIfRoadRelated)
+	end
+
 	local undoCn = ChangeHistoryService.OnUndo:Connect(function(waypointName: string)
+		clearStudioSelectionAfterHistory()
 		local top = undoSelectionStack[#undoSelectionStack]
 		if top and top.Name == waypointName then
 			table.remove(undoSelectionStack)
@@ -762,6 +787,7 @@ local function createRoadSession(plugin: Plugin)
 		changeSignal:Fire()
 	end)
 	local redoCn = ChangeHistoryService.OnRedo:Connect(function(waypointName: string)
+		clearStudioSelectionAfterHistory()
 		local top = redoSelectionStack[#redoSelectionStack]
 		if top and top.Name == waypointName then
 			table.remove(redoSelectionStack)
@@ -822,6 +848,7 @@ local function createRoadSession(plugin: Plugin)
 	session.AddInFrontOfCamera = addInFrontOfCamera
 
 	function session.Destroy()
+		sessionAlive = false
 		heartbeatCn:Disconnect()
 		undoCn:Disconnect()
 		redoCn:Disconnect()
