@@ -1,0 +1,18 @@
+Prio Features
+* ResizeAlign behavior doesn't work correctly on stuff with WeldConstraints
+* Script Injection Permission
+* Remember the axis size / offset for duplicated objects that got ResizeAligned (can optimize the check for resizable contents to just checking that attribute if we do this)
+* Something weird is happening with group as folder making empty models
+* Save a ResizeAlign direction for parts (?)
+
+Features
+* Allow specifying a random amount of offset per axis
+* Visual description of multiply snap by count
+* Line up the pixels correctly
+* Figure out how to move Rotation back from settings to draggerContext
+* Make modulo 90 check more generous, allowing one axis off
+* Rotate handles don't allow 90 degree rotation in one of the directions
+
+Bugs
+* UIPath breaks event handling for containing ScrollingFrame (Can't repro with minimal example??)
+* Resize + stale CanvasGroup chip results in missing content
