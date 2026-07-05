@@ -93,10 +93,10 @@ end
 function AddHandles:hitTest(mouseRay, ignoreExtraThreshold)
 	local closestHandleId, closestDistance = nil, math.huge
 	for handleId, handle in self._handles do
-		local distance = Math.intersectRaySphere(
+		local hit, distance = Math.intersectRaySphere(
 			mouseRay.Origin, mouseRay.Direction.Unit,
 			handle.Position, HIT_RADIUS * handle.Scale)
-		if distance and distance >= 0 and distance < closestDistance then
+		if hit and distance and distance < closestDistance then
 			closestDistance = distance
 			closestHandleId = handleId
 		end
