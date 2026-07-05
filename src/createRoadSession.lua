@@ -299,14 +299,17 @@ local function createRoadSession(plugin: Plugin)
 	-- Dragger context and schema
 	--------------------------------------------------------------------------
 
-	local fixedSelection = createFixedSelection(function()
-		if selectedRef then
-			selectedRef = nil
-			lastKnownPosition = nil
-			lastKnownKind = nil
-			changeSignal:Fire()
+	local function clearSelection()
+		if not selectedRef then
+			return
 		end
-	end)
+		selectedRef = nil
+		lastKnownPosition = nil
+		lastKnownKind = nil
+		changeSignal:Fire()
+	end
+
+	local fixedSelection = createFixedSelection(clearSelection)
 
 	local draggerContext = DraggerContext_PluginImpl.new(
 		plugin,
@@ -719,6 +722,15 @@ local function createRoadSession(plugin: Plugin)
 				selectedRef = { Model = endpoint.Segment.Model, Id = endpoint.Id }
 				updateDragger()
 				changeSignal:Fire()
+			end,
+			Deselect = function()
+				-- Idempotent for the same reason Select must be: the
+				-- framework re-initializes the click on selection changes.
+				if not selectedRef then
+					return
+				end
+				clearSelection()
+				updateDragger()
 			end,
 		}),
 	}

@@ -16,6 +16,7 @@ local RED = Color3.fromRGB(255, 70, 70)
 local MARKER_RADIUS = 1.2
 local MARKER_INSET = 1.4
 local HOVER_HANDLE_ID = "RoadEndpointHover"
+local DESELECT_HANDLE_ID = "RoadEndpointDeselect"
 local RAY_LENGTH = 10000
 
 local EndpointPickHandles = {}
@@ -24,6 +25,7 @@ EndpointPickHandles.__index = EndpointPickHandles
 export type Props = {
 	GetSelectedEndpoint: () -> RoadMath.Endpoint?,
 	Select: (endpoint: RoadMath.Endpoint) -> (),
+	Deselect: () -> (),
 }
 
 function EndpointPickHandles.new(draggerContext, props: Props)
@@ -44,18 +46,20 @@ end
 function EndpointPickHandles:hitTest(mouseRay, ignoreExtraThreshold)
 	self._hoverEndpoint = nil
 	local result = workspace:Raycast(mouseRay.Origin, mouseRay.Direction.Unit * RAY_LENGTH)
-	if not result then
-		return nil, math.huge, false
+	if result then
+		local segment = RoadMath.segmentFromDescendant(result.Instance)
+		if segment then
+			local blue, red = RoadMath.getEndpoints(segment)
+			local blueDistance = (blue.WorldCFrame.Position - result.Position).Magnitude
+			local redDistance = (red.WorldCFrame.Position - result.Position).Magnitude
+			self._hoverEndpoint = if blueDistance <= redDistance then blue else red
+			return HOVER_HANDLE_ID, result.Distance, false
+		end
 	end
-	local segment = RoadMath.segmentFromDescendant(result.Instance)
-	if not segment then
-		return nil, math.huge, false
-	end
-	local blue, red = RoadMath.getEndpoints(segment)
-	local blueDistance = (blue.WorldCFrame.Position - result.Position).Magnitude
-	local redDistance = (red.WorldCFrame.Position - result.Position).Magnitude
-	self._hoverEndpoint = if blueDistance <= redDistance then blue else red
-	return HOVER_HANDLE_ID, result.Distance, false
+	-- Clicking anything which isn't a road segment (including the sky)
+	-- deselects, so the user can clear the handles away to inspect results.
+	local distance = if result then result.Distance else RAY_LENGTH
+	return DESELECT_HANDLE_ID, distance, false
 end
 
 local function isSameEndpoint(a: RoadMath.Endpoint?, b: RoadMath.Endpoint?): boolean
@@ -109,6 +113,8 @@ end
 function EndpointPickHandles:mouseDown(mouseRay, handleId)
 	if handleId == HOVER_HANDLE_ID and self._hoverEndpoint then
 		self._props.Select(self._hoverEndpoint)
+	elseif handleId == DESELECT_HANDLE_ID then
+		self._props.Deselect()
 	end
 end
 
