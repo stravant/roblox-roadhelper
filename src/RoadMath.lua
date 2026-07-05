@@ -48,6 +48,11 @@ export type MoveSolution = {
 	Size: Vector3,
 	Pivot: CFrame,
 	Flip: boolean,
+	-- True when the segment was rotated 180 degrees so its blue/red ends
+	-- swap geographic places. The caller must also swap the segment's
+	-- AdjustBlue*/AdjustRed* attributes (negating grades and banks) and
+	-- re-color any endpoint references it holds.
+	SwapEnds: boolean,
 }
 
 -- Shortest allowed segment (along the travel direction for straights)
@@ -235,16 +240,30 @@ function RoadMath.solveMove(segment: SegmentInfo, movedId: EndpointId, newWorldP
 		delta = -delta
 	end
 
+	local swapEnds = false
+	if segment.Kind == "Straight" and delta.Y < 0 then
+		-- Straight roads always climb blue -> red. To pull this end below the
+		-- other one, rotate the segment 180 degrees about vertical so the ends
+		-- swap roles: the S-bend has 180-degree rotational symmetry, so the
+		-- worldly shape (and the sway and Flip values) are preserved, and the
+		-- dragged geographic end becomes the (bottom) blue end.
+		swapEnds = true
+		rotation = rotation * CFrame.Angles(0, math.pi, 0)
+		movedId, fixedId = fixedId, movedId
+		-- blue->red delta in the rotated frame: X and Z negate twice (once
+		-- from reversing the ends, once from the 180 rotation), Y negates once
+		delta = Vector3.new(delta.X, -delta.Y, delta.Z)
+	end
+
 	local width = segment.Width
 	local newSize: Vector3
 	local newFlip: boolean
 	if segment.Kind == "Straight" then
-		-- Lateral offset becomes sway (and its side selects Flip); the road
-		-- always climbs blue -> red so the vertical delta clamps at zero.
+		-- Lateral offset becomes sway (and its side selects Flip)
 		newFlip = delta.X < 0
 		newSize = Vector3.new(
 			width + math.abs(delta.X),
-			math.max(delta.Y, 0),
+			delta.Y,
 			math.max(delta.Z, RoadMath.MIN_LENGTH)
 		)
 	else
@@ -266,6 +285,23 @@ function RoadMath.solveMove(segment: SegmentInfo, movedId: EndpointId, newWorldP
 		Size = newSize,
 		Pivot = rotation + pivotPosition,
 		Flip = newFlip,
+		SwapEnds = swapEnds,
+	}
+end
+
+-- The attribute updates accompanying a SwapEnds solution: the blue and red
+-- adjust values trade places, following their geographic ends. Dir carries
+-- over unchanged (yaw angles are frame independent for upright models);
+-- grade and bank negate because the travel direction through each geographic
+-- end reverses, preserving each face's actual world geometry.
+function RoadMath.swappedAdjustValues(get: (name: string) -> number): { [string]: number }
+	return {
+		AdjustBlueDir = get("AdjustRedDir"),
+		AdjustBlueGrade = -get("AdjustRedGrade"),
+		AdjustBlueBank = -get("AdjustRedBank"),
+		AdjustRedDir = get("AdjustBlueDir"),
+		AdjustRedGrade = -get("AdjustBlueGrade"),
+		AdjustRedBank = -get("AdjustBlueBank"),
 	}
 end
 

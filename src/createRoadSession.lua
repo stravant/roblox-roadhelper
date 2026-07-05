@@ -380,9 +380,36 @@ local function createRoadSession(plugin: Plugin)
 	--------------------------------------------------------------------------
 
 	local function applySolution(model: Model, solution: RoadMath.MoveSolution)
+		if solution.SwapEnds then
+			-- The segment was rotated 180 degrees and its ends traded roles:
+			-- move the adjust values to follow their geographic ends.
+			local swapped = RoadMath.swappedAdjustValues(function(name: string)
+				local value = model:GetAttribute(name)
+				return if typeof(value) == "number" then value else 0
+			end)
+			for name, value in swapped do
+				model:SetAttribute(name, value)
+			end
+		end
 		(model :: any).Size = solution.Size
 		model:SetAttribute("Flip", solution.Flip)
 		model:PivotTo(solution.Pivot)
+	end
+
+	-- Apply a move solution and keep endpoint references coherent: a SwapEnds
+	-- solution re-colors the segment's ends, so any refs we hold pointing at
+	-- them (the drag target itself and possibly the selection) must flip too.
+	local function applySolutionToRef(ref: EndpointRef, solution: RoadMath.MoveSolution)
+		applySolution(ref.Model, solution)
+		if solution.SwapEnds then
+			local newId: RoadMath.EndpointId = if ref.Id == "Blue" then "Red" else "Blue"
+			local selected = selectedRef
+			if selected and selected ~= ref and selected.Model == ref.Model and selected.Id == ref.Id then
+				selected.Id = newId
+			end
+			ref.Id = newId
+			changeSignal:Fire()
+		end
 	end
 
 	-- Move targets are captured at drag start: the selected end plus the mated
@@ -409,7 +436,7 @@ local function createRoadSession(plugin: Plugin)
 			local info = RoadMath.getSegmentInfo(target.Model)
 			if info then
 				local ok, err = pcall(function()
-					applySolution(target.Model, RoadMath.solveMove(info, target.Id, newWorldPosition))
+					applySolutionToRef(target, RoadMath.solveMove(info, target.Id, newWorldPosition))
 				end)
 				if not ok then
 					warn("RoadHelper: Endpoint move failed: " .. tostring(err))
@@ -590,7 +617,7 @@ local function createRoadSession(plugin: Plugin)
 		local info = RoadMath.getSegmentInfo(ref.Model)
 		if info then
 			local ok, err = pcall(function()
-				applySolution(ref.Model, RoadMath.solveMove(info, ref.Id, worldPosition))
+				applySolutionToRef(ref, RoadMath.solveMove(info, ref.Id, worldPosition))
 			end)
 			if not ok then
 				warn("RoadHelper: Segment placement failed: " .. tostring(err))

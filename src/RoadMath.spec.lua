@@ -118,17 +118,60 @@ return function(t: TestTypes.TestContext)
 		t.expect(solution.Flip).toBe(false)
 	end)
 
-	t.test("solveMove straight: vertical move sets height, clamps below", function()
+	t.test("solveMove straight: vertical move up sets height without a swap", function()
 		local seg = makeSegment("Straight", Vector3.new(WIDTH, 0, 200), CFrame.identity)
 		local up = RoadMath.solveMove(seg, "Red", Vector3.new(0, 25, 100))
 		t.expect(up.Size.Y).toBe(25)
+		t.expect(up.SwapEnds).toBe(false)
 		local newSeg = makeSegment("Straight", up.Size, up.Pivot, up.Flip)
 		expectFuzzy(t, RoadMath.getEndpoint(newSeg, "Blue").WorldCFrame.Position, Vector3.new(0, 0, -100))
 		expectFuzzy(t, RoadMath.getEndpoint(newSeg, "Red").WorldCFrame.Position, Vector3.new(0, 25, 100))
+	end)
 
-		-- Red below blue clamps to flat
-		local down = RoadMath.solveMove(seg, "Red", Vector3.new(0, -25, 100))
-		t.expect(down.Size.Y).toBe(0)
+	t.test("solveMove straight: moving red below blue swaps ends, preserving sway", function()
+		-- Swayed segment: sway 30, blue at (-30, 0, -100), red at (30, 0, 100)
+		local seg = makeSegment("Straight", Vector3.new(WIDTH + 60, 0, 200), CFrame.identity)
+		local oldBlue = RoadMath.getEndpoint(seg, "Blue").WorldCFrame.Position
+		local target = Vector3.new(30, -25, 100) -- straight down from red
+		local solution = RoadMath.solveMove(seg, "Red", target)
+		t.expect(solution.SwapEnds).toBe(true)
+		t.expect(solution.Size.Y).toBe(25)
+		-- Sway and Flip are preserved by the 180-degree rotational symmetry
+		t.expect(solution.Size.X).toBe(WIDTH + 60)
+		t.expect(solution.Flip).toBe(false)
+		local newSeg = makeSegment("Straight", solution.Size, solution.Pivot, solution.Flip)
+		-- The dragged geographic end is now the blue (bottom) end
+		expectFuzzy(t, RoadMath.getEndpoint(newSeg, "Blue").WorldCFrame.Position, target)
+		expectFuzzy(t, RoadMath.getEndpoint(newSeg, "Red").WorldCFrame.Position, oldBlue)
+	end)
+
+	t.test("solveMove straight: swap works when moving the blue end up", function()
+		local seg = makeSegment("Straight", Vector3.new(WIDTH, 0, 200), CFrame.identity)
+		local oldRed = RoadMath.getEndpoint(seg, "Red").WorldCFrame.Position
+		local target = Vector3.new(0, 30, -100) -- blue end pulled above red
+		local solution = RoadMath.solveMove(seg, "Blue", target)
+		t.expect(solution.SwapEnds).toBe(true)
+		t.expect(solution.Size.Y).toBe(30)
+		local newSeg = makeSegment("Straight", solution.Size, solution.Pivot, solution.Flip)
+		-- The dragged geographic end is now the red (top) end
+		expectFuzzy(t, RoadMath.getEndpoint(newSeg, "Red").WorldCFrame.Position, target)
+		expectFuzzy(t, RoadMath.getEndpoint(newSeg, "Blue").WorldCFrame.Position, oldRed)
+	end)
+
+	t.test("swappedAdjustValues: dir carries, grade and bank negate", function()
+		local values = {
+			AdjustBlueDir = 10, AdjustBlueGrade = 5, AdjustBlueBank = 3,
+			AdjustRedDir = -20, AdjustRedGrade = 8, AdjustRedBank = -4,
+		}
+		local swapped = RoadMath.swappedAdjustValues(function(name)
+			return values[name]
+		end)
+		t.expect(swapped.AdjustBlueDir).toBe(-20)
+		t.expect(swapped.AdjustBlueGrade).toBe(-8)
+		t.expect(swapped.AdjustBlueBank).toBe(4)
+		t.expect(swapped.AdjustRedDir).toBe(10)
+		t.expect(swapped.AdjustRedGrade).toBe(-5)
+		t.expect(swapped.AdjustRedBank).toBe(-3)
 	end)
 
 	t.test("solveMove straight: respects rotated pivots", function()
