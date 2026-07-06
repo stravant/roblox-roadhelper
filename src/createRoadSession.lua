@@ -658,7 +658,7 @@ local function createRoadSession(plugin: Plugin)
 	end
 
 	-- Add a free-standing segment in front of the camera (UI buttons)
-	local function addInFrontOfCamera(kind: RoadMath.SegmentKind)
+	local function addInFrontOfCamera(kind: RoadMath.SegmentKind, alignToWorld: boolean?)
 		local camera = workspace.CurrentCamera
 		if not camera then
 			return
@@ -682,6 +682,10 @@ local function createRoadSession(plugin: Plugin)
 		local look = camera.CFrame.LookVector * Vector3.new(1, 0, 1)
 		look = if look.Magnitude > 0.01 then look.Unit else Vector3.zAxis
 		local yaw = math.atan2(look.X, look.Z)
+		if alignToWorld then
+			-- Snap the new segment to the nearest world axis
+			yaw = math.round(yaw / (math.pi / 2)) * (math.pi / 2)
+		end
 		local rotation = CFrame.Angles(0, yaw, 0)
 
 		local size = if kind == "Straight"

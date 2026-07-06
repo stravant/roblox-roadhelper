@@ -83,7 +83,7 @@ return function(plugin: Plugin, panel: DockWidgetPluginGui, buttonClicked: Signa
 				end,
 				AddSegment = function(kind: RoadMath.SegmentKind)
 					if session then
-						session.AddInFrontOfCamera(kind)
+						session.AddInFrontOfCamera(kind, activeSettings.AlignToWorld)
 					end
 				end,
 				CurrentSettings = activeSettings,

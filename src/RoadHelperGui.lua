@@ -7,6 +7,7 @@ local e = React.createElement
 local Colors = require("./PluginGui/Colors")
 local SubPanel = require("./PluginGui/SubPanel")
 local NumberInput = require("./PluginGui/NumberInput")
+local Checkbox = require("./PluginGui/Checkbox")
 local PluginGui = require("./PluginGui/PluginGui")
 local OperationButton = require("./PluginGui/OperationButton")
 local PluginGuiTypes = require("./PluginGui/Types")
@@ -23,61 +24,68 @@ local function createNextOrder(): () -> number
 	end
 end
 
-local BLUE = Color3.fromRGB(70, 130, 255)
-local RED = Color3.fromRGB(255, 70, 70)
-
 local function TutorialStub(props: PluginGuiTypes.TutorialElementProps)
 	return nil :: any
 end
 
 local ROADHELPER_CONFIG: PluginGuiTypes.PluginGuiConfig = {
 	PluginName = "RoadHelper",
-	PendingText = "Click a road endpoint marker in the 3D view to select it.",
+	PendingText = "Click the end of a road segment to select that endpoint.",
 	TutorialElement = TutorialStub :: any,
 }
 
-local function describeSelection(state: createRoadSession.SelectionState): string
+local function describeStatus(state: createRoadSession.SelectionState): string
 	if state.Kind == "none" then
-		return "Click a road endpoint marker to select it."
-	end
-	local endName = if state.EndpointId == "Blue" then "blue end" else "red end"
-	local segName = if state.SegmentKind == "Straight" then "StraightRoad" else "CurveRoad"
-	if state.Kind == "open" then
-		return `<b>Open endpoint</b> — {segName} ({endName})\nDrag the arrows in front of it to extend the road.`
+		return "Click the end of a road segment to select that endpoint."
+	elseif state.Kind == "open" then
+		return "<b>Open endpoint selected.</b>"
+			.. "\nDrag the handles to move it, the rings to adjust its angles, or drag one of the cones to extend the road with a new segment."
 	else
-		local otherName = if state.OtherSegmentKind == "Straight" then "StraightRoad" else "CurveRoad"
-		return `<b>Closed joint</b> — {segName} ({endName}) to {otherName}`
+		return "<b>Joint selected.</b>"
+			.. "\nDrag the handles to move the joint, or the rings to adjust its angles. Both segments follow."
 	end
 end
 
-local function SelectionPanel(props: {
+local function StatusPanel(props: {
+	SelectionState: createRoadSession.SelectionState,
+	LayoutOrder: number?,
+})
+	return e(SubPanel, {
+		Title = "Status",
+		LayoutOrder = props.LayoutOrder,
+	}, {
+		Status = e("TextLabel", {
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			TextColor3 = Colors.WHITE,
+			RichText = true,
+			Text = describeStatus(props.SelectionState),
+			TextWrapped = true,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Font = Enum.Font.SourceSans,
+			TextSize = 18,
+		}),
+	})
+end
+
+local function ParametersPanel(props: {
 	SelectionState: createRoadSession.SelectionState,
 	SetAdjustValue: (axis: RoadMath.AdjustAxis, value: number) -> (),
 	LayoutOrder: number?,
 })
 	local state = props.SelectionState
+	if state.Kind == "none" then
+		return nil :: any
+	end
 	local nextOrder = createNextOrder()
-
-	local children: { [string]: any } = {}
-	children.Status = e("TextLabel", {
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		BackgroundTransparency = 1,
-		TextColor3 = if state.Kind == "none"
-			then Colors.OFFWHITE
-			else (if state.EndpointId == "Blue" then BLUE else RED),
-		RichText = true,
-		Text = describeSelection(state),
-		TextWrapped = true,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Font = Enum.Font.SourceSans,
-		TextSize = 18,
-		LayoutOrder = nextOrder(),
-	})
-
-	if state.Kind ~= "none" then
-		children.DirInput = e(NumberInput, {
-			Label = "Dir",
+	return e(SubPanel, {
+		Title = "Parameters (Attributes)",
+		Padding = UDim.new(0, 6),
+		LayoutOrder = props.LayoutOrder,
+	}, {
+		DirectionInput = e(NumberInput, {
+			Label = "Direction",
 			Value = state.Dir,
 			Unit = "°",
 			LayoutOrder = nextOrder(),
@@ -85,8 +93,8 @@ local function SelectionPanel(props: {
 				props.SetAdjustValue("Dir", value)
 				return value
 			end,
-		})
-		children.GradeInput = e(NumberInput, {
+		}),
+		GradeInput = e(NumberInput, {
 			Label = "Grade",
 			Value = state.Grade,
 			Unit = "°",
@@ -95,8 +103,8 @@ local function SelectionPanel(props: {
 				props.SetAdjustValue("Grade", value)
 				return value
 			end,
-		})
-		children.BankInput = e(NumberInput, {
+		}),
+		BankInput = e(NumberInput, {
 			Label = "Bank",
 			Value = state.Bank,
 			Unit = "°",
@@ -105,22 +113,20 @@ local function SelectionPanel(props: {
 				props.SetAdjustValue("Bank", value)
 				return value
 			end,
-		})
-	end
-
-	return e(SubPanel, {
-		Title = "Endpoint",
-		LayoutOrder = props.LayoutOrder,
-	}, children)
+		}),
+	})
 end
 
 local function AddPanel(props: {
+	CurrentSettings: Settings.RoadHelperSettings,
+	UpdatedSettings: () -> (),
 	AddSegment: (kind: RoadMath.SegmentKind) -> (),
 	LayoutOrder: number?,
 })
 	local nextOrder = createNextOrder()
 	return e(SubPanel, {
 		Title = "Add",
+		Padding = UDim.new(0, 8),
 		LayoutOrder = props.LayoutOrder,
 	}, {
 		Hint = e("TextLabel", {
@@ -134,6 +140,15 @@ local function AddPanel(props: {
 			Font = Enum.Font.SourceSans,
 			TextSize = 16,
 			LayoutOrder = nextOrder(),
+		}),
+		AlignToWorld = e(Checkbox, {
+			Label = "Align to world",
+			Checked = props.CurrentSettings.AlignToWorld,
+			LayoutOrder = nextOrder(),
+			Changed = function(checked: boolean)
+				props.CurrentSettings.AlignToWorld = checked
+				props.UpdatedSettings()
+			end,
 		}),
 		Buttons = e("Frame", {
 			Size = UDim2.new(1, 0, 0, 0),
@@ -182,19 +197,27 @@ local function AddPanel(props: {
 	})
 end
 
-local function DonePanel(props: {
+local function CloseButton(props: {
 	HandleAction: (string) -> (),
 	LayoutOrder: number?,
 })
-	return e(SubPanel, {
-		Title = "",
+	return e("Frame", {
+		Size = UDim2.fromScale(1, 0),
+		BackgroundTransparency = 1,
 		LayoutOrder = props.LayoutOrder,
+		AutomaticSize = Enum.AutomaticSize.Y,
 	}, {
-		Button = e(OperationButton, {
-			Text = "Done",
-			Height = 28,
+		Padding = e("UIPadding", {
+			PaddingTop = UDim.new(0, 8),
+			PaddingBottom = UDim.new(0, 12),
+			PaddingLeft = UDim.new(0, 12),
+			PaddingRight = UDim.new(0, 12),
+		}),
+		CancelButton = e(OperationButton, {
+			Text = "Close <i>RoadHelper</i>",
+			Color = Colors.DARK_RED,
 			Disabled = false,
-			Color = Color3.fromRGB(0, 150, 60),
+			Height = 30,
 			OnClick = function()
 				props.HandleAction("cancel")
 			end,
@@ -223,16 +246,22 @@ local function RoadHelperGui(props: {
 			Panelized = props.Panelized,
 		},
 	}, {
-		SelectionPanel = e(SelectionPanel, {
+		StatusPanel = e(StatusPanel, {
+			SelectionState = props.SelectionState,
+			LayoutOrder = nextOrder(),
+		}),
+		ParametersPanel = e(ParametersPanel, {
 			SelectionState = props.SelectionState,
 			SetAdjustValue = props.SetAdjustValue,
 			LayoutOrder = nextOrder(),
 		}),
 		AddPanel = e(AddPanel, {
+			CurrentSettings = props.CurrentSettings,
+			UpdatedSettings = props.UpdatedSettings,
 			AddSegment = props.AddSegment,
 			LayoutOrder = nextOrder(),
 		}),
-		DonePanel = e(DonePanel, {
+		CloseButton = e(CloseButton, {
 			HandleAction = props.HandleAction,
 			LayoutOrder = nextOrder(),
 		}),

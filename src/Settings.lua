@@ -3,7 +3,9 @@ local kSettingsKey = "roadHelperState"
 
 local PluginGuiTypes = require("./PluginGui/Types")
 
-export type RoadHelperSettings = PluginGuiTypes.PluginGuiSettings
+export type RoadHelperSettings = PluginGuiTypes.PluginGuiSettings & {
+	AlignToWorld: boolean,
+}
 
 local function loadSettings(plugin: Plugin): RoadHelperSettings
 	local raw = plugin:GetSetting(kSettingsKey) or {}
@@ -19,6 +21,7 @@ local function loadSettings(plugin: Plugin): RoadHelperSettings
 		WindowHeightDelta = if raw.WindowHeightDelta ~= nil then raw.WindowHeightDelta else 0,
 		HaveHelp = if raw.HaveHelp ~= nil then raw.HaveHelp else true,
 		DoneTutorial = if raw.DoneTutorial ~= nil then raw.DoneTutorial else false,
+		AlignToWorld = if raw.AlignToWorld ~= nil then raw.AlignToWorld else true,
 	}
 end
 
@@ -31,6 +34,7 @@ local function saveSettings(plugin: Plugin, settings: RoadHelperSettings)
 		WindowHeightDelta = settings.WindowHeightDelta,
 		HaveHelp = settings.HaveHelp,
 		DoneTutorial = settings.DoneTutorial,
+		AlignToWorld = settings.AlignToWorld,
 	})
 end
 
