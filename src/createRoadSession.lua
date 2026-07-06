@@ -702,16 +702,23 @@ local function createRoadSession(plugin: Plugin)
 			newModel:SetAttribute(RoadMath.adjustAttributeName("Red", axis), 0)
 		end
 		-- The joining end must mate with the open end's dir/grade/bank
+		local farId: RoadMath.EndpointId = if joinId == "Blue" then "Red" else "Blue"
 		local matching = RoadMath.matchingAdjust(openEnd, joinId)
 		newModel:SetAttribute(RoadMath.adjustAttributeName(joinId, "Dir"), matching.Dir)
 		newModel:SetAttribute(RoadMath.adjustAttributeName(joinId, "Grade"), matching.Grade)
-		newModel:SetAttribute(RoadMath.adjustAttributeName(joinId, "Bank"), matching.Bank);
+		newModel:SetAttribute(RoadMath.adjustAttributeName(joinId, "Bank"), matching.Bank)
+		if kind == "Straight" then
+			-- A straight added off an angled end continues at that angle: the
+			-- far end carries the same yaw (same attribute = same effective
+			-- world yaw on an unflipped straight), so the road doesn't bend
+			-- back to the nominal axis and further adds keep the angle going.
+			newModel:SetAttribute(RoadMath.adjustAttributeName(farId, "Dir"), matching.Dir)
+		end
 
 		(newModel :: any).Size = size
 		newModel:PivotTo(pivot)
 		newModel.Parent = sourceModel.Parent
 
-		local farId: RoadMath.EndpointId = if joinId == "Blue" then "Red" else "Blue"
 		return newModel, farId
 	end
 
