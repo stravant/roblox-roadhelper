@@ -285,6 +285,72 @@ return function(t: TestTypes.TestContext)
 		t.expect(RoadMath.adjustDeltaSign(selected, partner, "Grade")).toBe(1)
 	end)
 
+	t.test("adjustDeltaSign: grade flips on flipped curves (V-shape bug)", function()
+		-- Straight A with its blue end at (0, 0, -100) facing -Z
+		local segA = makeSegment("Straight", Vector3.new(WIDTH, 0, 200), CFrame.identity)
+		-- Flipped curve B rotated so its red end mates with A's blue end
+		local rotation = CFrame.Angles(0, math.rad(-90), 0)
+		local redLocal = RoadMath.localEndpointFrame("Curve", Vector3.new(120, 20, 120), WIDTH, true, "Red")
+		local pivot = rotation + (Vector3.new(0, 0, -100) - rotation:VectorToWorldSpace(redLocal.Position))
+		local segB = makeSegment("Curve", Vector3.new(120, 20, 120), pivot, true)
+
+		local selected = RoadMath.getEndpoint(segA, "Blue")
+		local partner = RoadMath.getEndpoint(segB, "Red")
+		-- Sanity: mated
+		t.expect((selected.WorldCFrame.Position - partner.WorldCFrame.Position).Magnitude < 0.1).toBe(true)
+		t.expect(partner.WorldCFrame.LookVector:Dot(selected.WorldCFrame.LookVector) < -0.9).toBe(true)
+
+		-- Selected straight blue: colorSign -1 * facing +1 * flip 1 = -1
+		t.expect(RoadMath.adjustDeltaSign(selected, selected, "Grade")).toBe(-1)
+		-- Partner FLIPPED curve red: colorSign +1 * facing -1 * flip -1 = +1
+		-- (opposite attribute deltas <=> equal world pitch, because the flipped
+		-- curve's grade attribute means the opposite world pitch)
+		t.expect(RoadMath.adjustDeltaSign(selected, partner, "Grade")).toBe(1)
+		-- Bank has no curve flip factor: colorSign +1 * facing -1 = -1
+		t.expect(RoadMath.adjustDeltaSign(selected, partner, "Bank")).toBe(-1)
+
+		-- An UNFLIPPED curve in the same spot keeps the plain mapping
+		local redLocalUnflipped = RoadMath.localEndpointFrame("Curve", Vector3.new(120, 20, 120), WIDTH, false, "Red")
+		local pivotUnflipped = rotation + (Vector3.new(0, 0, -100) - rotation:VectorToWorldSpace(redLocalUnflipped.Position))
+		local segC = makeSegment("Curve", Vector3.new(120, 20, 120), pivotUnflipped, false)
+		local partnerUnflipped = RoadMath.getEndpoint(segC, "Red")
+		t.expect(RoadMath.adjustDeltaSign(selected, partnerUnflipped, "Grade")).toBe(-1)
+	end)
+
+	t.test("adjustDeltaSign: dir mirrors on flipped straights", function()
+		local seg = makeSegment("Straight", Vector3.new(200, 0, 200), CFrame.identity, true)
+		local endpoint = RoadMath.getEndpoint(seg, "Red")
+		t.expect(RoadMath.adjustDeltaSign(endpoint, endpoint, "Dir")).toBe(-1)
+		local unflipped = makeSegment("Straight", Vector3.new(200, 0, 200), CFrame.identity, false)
+		local endpoint2 = RoadMath.getEndpoint(unflipped, "Red")
+		t.expect(RoadMath.adjustDeltaSign(endpoint2, endpoint2, "Dir")).toBe(1)
+	end)
+
+	t.test("actualOutwardDirection: mirrors dir on flipped straights", function()
+		local seg = makeSegment("Straight", Vector3.new(WIDTH, 0, 200), CFrame.identity, true);
+		(seg.Model :: any).attrs.AdjustRedDir = 30
+		local endpoint = RoadMath.getEndpoint(seg, "Red")
+		local outward = RoadMath.actualOutwardDirection(endpoint)
+		-- Effective yaw is -30 degrees on a flipped straight
+		local expected = CFrame.Angles(0, math.rad(-30), 0):VectorToWorldSpace(Vector3.new(0, 0, 1))
+		if not outward:FuzzyEq(expected, 0.01) then
+			t.fail(`Expected {expected}, got {outward}`)
+		end
+	end)
+
+	t.test("matchingAdjust: converts through the open end's curve flip", function()
+		local rotation = CFrame.Angles(0, math.rad(-90), 0)
+		local redLocal = RoadMath.localEndpointFrame("Curve", Vector3.new(120, 20, 120), WIDTH, true, "Red")
+		local pivot = rotation + (Vector3.new(0, 0, -100) - rotation:VectorToWorldSpace(redLocal.Position))
+		local segB = makeSegment("Curve", Vector3.new(120, 20, 120), pivot, true);
+		(segB.Model :: any).attrs.AdjustRedGrade = 10
+		local openEnd = RoadMath.getEndpoint(segB, "Red")
+		-- Flipped curve red with grade 10 actually exits pitching -10; a new
+		-- (unflipped) blue end mating it must enter with grade -10.
+		local matching = RoadMath.matchingAdjust(openEnd, "Blue")
+		t.expect(matching.Grade).toBe(-10)
+	end)
+
 	--
 	-- New segment placement
 	--

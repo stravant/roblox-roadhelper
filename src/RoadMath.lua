@@ -188,6 +188,7 @@ end
 function RoadMath.actualOutwardDirection(endpoint: Endpoint): Vector3
 	local dirName = if endpoint.Id == "Blue" then "AdjustBlueDir" else "AdjustRedDir"
 	local dirAngle = math.rad(getNumberAttribute(endpoint.Segment.Model, dirName, 0))
+	dirAngle *= RoadMath.flipFactor(endpoint.Segment, "Dir")
 	local nominalOutward = endpoint.WorldCFrame.LookVector
 	local up = endpoint.WorldCFrame.UpVector
 	return CFrame.fromAxisAngle(up, dirAngle):VectorToWorldSpace(nominalOutward)
@@ -335,14 +336,36 @@ end
 	  facingSign is +1 when the end faces the same way as the selected end
 	  (i.e. it IS the selected end) and -1 for the mated partner.
 ]]
-function RoadMath.adjustDeltaSign(selected: Endpoint, target: Endpoint, axis: AdjustAxis): number
-	if axis == "Dir" then
+--[[
+	How a segment's Flip attribute changes the *world* meaning of each Adjust
+	attribute (mirroring the corresponding generator math):
+	- Curve grades are multiplied by the climb sign, which Flip negates.
+	- Straight Flip mirrors the path horizontally, negating the effective yaw
+	  of the Dir attributes.
+	- Banks (and the remaining combinations) are unaffected.
+]]
+function RoadMath.flipFactor(segment: SegmentInfo, axis: AdjustAxis): number
+	if not segment.Flip then
 		return 1
+	end
+	if axis == "Grade" and segment.Kind == "Curve" then
+		return -1
+	end
+	if axis == "Dir" and segment.Kind == "Straight" then
+		return -1
+	end
+	return 1
+end
+
+function RoadMath.adjustDeltaSign(selected: Endpoint, target: Endpoint, axis: AdjustAxis): number
+	local flipFactor = RoadMath.flipFactor(target.Segment, axis)
+	if axis == "Dir" then
+		return flipFactor
 	end
 	local colorSign = if target.Id == "Red" then 1 else -1
 	local facing = target.WorldCFrame.LookVector:Dot(selected.WorldCFrame.LookVector)
 	local facingSign = if facing >= 0 then 1 else -1
-	return colorSign * facingSign
+	return colorSign * facingSign * flipFactor
 end
 
 -- The Adjust values a newly added segment's joining end must have to mate
@@ -352,8 +375,11 @@ function RoadMath.matchingAdjust(openEnd: Endpoint, newEndId: EndpointId): { Gra
 	local openColorSign = if openEnd.Id == "Red" then 1 else -1
 	local newColorSign = if newEndId == "Red" then 1 else -1
 	local k = -openColorSign * newColorSign
+	-- The new segment is created unflipped, but the open end's attribute
+	-- values must be converted through its own flip factors to get their
+	-- actual world meaning.
 	return {
-		Grade = k * RoadMath.getAdjustValue(openEnd, "Grade"),
+		Grade = k * RoadMath.flipFactor(openEnd.Segment, "Grade") * RoadMath.getAdjustValue(openEnd, "Grade"),
 		Bank = k * RoadMath.getAdjustValue(openEnd, "Bank"),
 	}
 end

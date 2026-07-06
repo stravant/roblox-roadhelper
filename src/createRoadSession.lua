@@ -380,6 +380,7 @@ local function createRoadSession(plugin: Plugin)
 	--------------------------------------------------------------------------
 
 	local function applySolution(model: Model, solution: RoadMath.MoveSolution)
+		local wasFlipped = model:GetAttribute("Flip") == true
 		if solution.SwapEnds then
 			-- The segment was rotated 180 degrees and its ends traded roles:
 			-- move the adjust values to follow their geographic ends.
@@ -389,6 +390,24 @@ local function createRoadSession(plugin: Plugin)
 			end)
 			for name, value in swapped do
 				model:SetAttribute(name, value)
+			end
+		end
+		if wasFlipped ~= solution.Flip then
+			-- Flipping changes the world meaning of some adjust attributes
+			-- (curve grades scale with the climb sign; straight dirs mirror
+			-- with the path): negate those so each face's actual world
+			-- geometry is preserved through the flip.
+			local info = RoadMath.getSegmentInfo(model)
+			if info then
+				local names = if info.Kind == "Curve"
+					then { "AdjustBlueGrade", "AdjustRedGrade" }
+					else { "AdjustBlueDir", "AdjustRedDir" }
+				for _, name in names do
+					local value = model:GetAttribute(name)
+					if typeof(value) == "number" and value ~= 0 then
+						model:SetAttribute(name, -value)
+					end
+				end
 			end
 		end
 		(model :: any).Size = solution.Size
