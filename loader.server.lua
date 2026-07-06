@@ -4,7 +4,7 @@ local Signal = require(script.Parent.Packages.Signal)
 -- Use the toolbar combiner?
 local COMBINE_TOOLBAR = false
 
-local RIBBON_ICON = ""
+local RIBBON_ICON = "rbxassetid://111094545379473"
 local TOOLTIP = "Activate RoadHelper, for working with the endpoints of procedural road segments."
 
 local setButtonActive: (active: boolean) -> () = nil
