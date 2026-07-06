@@ -22,8 +22,8 @@ local DraggerService = game:GetService("DraggerService")
 local ALWAYS_ON_TOP = true
 local OUTSET = 0.5
 local FREE_HANDLE_ID = "FreeDrag"
-local FREE_RADIUS = 1.1
-local FREE_HIT_RADIUS = 1.5
+local FREE_RADIUS = 0.77
+local FREE_HIT_RADIUS = 1.05
 local FREE_COLOR = Color3.fromRGB(245, 245, 245)
 local RAY_LENGTH = 10000
 

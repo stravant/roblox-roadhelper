@@ -72,6 +72,7 @@ end
 local function ParametersPanel(props: {
 	SelectionState: createRoadSession.SelectionState,
 	SetAdjustValue: (axis: RoadMath.AdjustAxis, value: number) -> (),
+	SetBlend: (value: boolean) -> (),
 	LayoutOrder: number?,
 })
 	local state = props.SelectionState
@@ -113,6 +114,12 @@ local function ParametersPanel(props: {
 				props.SetAdjustValue("Bank", value)
 				return value
 			end,
+		}),
+		HaveSkirt = e(Checkbox, {
+			Label = "Have skirt",
+			Checked = state.Blend,
+			LayoutOrder = nextOrder(),
+			Changed = props.SetBlend,
 		}),
 	})
 end
@@ -229,6 +236,7 @@ local function RoadHelperGui(props: {
 	GuiState: PluginGuiTypes.PluginGuiMode,
 	SelectionState: createRoadSession.SelectionState,
 	SetAdjustValue: (axis: RoadMath.AdjustAxis, value: number) -> (),
+	SetBlend: (value: boolean) -> (),
 	AddSegment: (kind: RoadMath.SegmentKind) -> (),
 	CurrentSettings: Settings.RoadHelperSettings,
 	UpdatedSettings: () -> (),
@@ -253,6 +261,7 @@ local function RoadHelperGui(props: {
 		ParametersPanel = e(ParametersPanel, {
 			SelectionState = props.SelectionState,
 			SetAdjustValue = props.SetAdjustValue,
+			SetBlend = props.SetBlend,
 			LayoutOrder = nextOrder(),
 		}),
 		AddPanel = e(AddPanel, {

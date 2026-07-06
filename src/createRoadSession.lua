@@ -57,6 +57,7 @@ export type SelectionState = {
 	Dir: number,
 	Grade: number,
 	Bank: number,
+	Blend: boolean,
 }
 
 local function createFixedSelection(onCleared: () -> ())
@@ -956,7 +957,20 @@ local function createRoadSession(plugin: Plugin)
 			Dir = RoadMath.getAdjustValue(selected, "Dir"),
 			Grade = RoadMath.getAdjustValue(selected, "Grade"),
 			Bank = RoadMath.getAdjustValue(selected, "Bank"),
+			Blend = selected.Segment.Model:GetAttribute("Blend") == true,
 		} :: any
+	end
+
+	-- Toggle the blend skirt of the selected endpoint's segment
+	function session.SetBlend(value: boolean)
+		local selected = getSelectedEndpoint()
+		if not selected then
+			return
+		end
+		beginRecording("Toggle Skirt")
+		selected.Segment.Model:SetAttribute("Blend", value)
+		finishRecording()
+		changeSignal:Fire()
 	end
 
 	-- Set an absolute Adjust value on the selected end (from the UI), applying

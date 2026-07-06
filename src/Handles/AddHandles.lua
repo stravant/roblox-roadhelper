@@ -12,10 +12,10 @@ local Math = require(DraggerFramework.Utility.Math)
 
 local RoadMath = require(script.Parent.Parent.RoadMath)
 
-local MARKER_SIZE = 2.4
-local HIT_RADIUS = 2.2
-local AHEAD = 8
-local ASIDE = 6
+local MARKER_SIZE = 1.7
+local HIT_RADIUS = 1.6
+local AHEAD = 6.4
+local ASIDE = 4.8
 local DRAG_START_THRESHOLD = 3
 
 local STRAIGHT_COLOR = Color3.fromRGB(240, 240, 240)

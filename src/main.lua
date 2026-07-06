@@ -81,6 +81,11 @@ return function(plugin: Plugin, panel: DockWidgetPluginGui, buttonClicked: Signa
 						session.SetAdjustValue(axis, value)
 					end
 				end,
+				SetBlend = function(value: boolean)
+					if session then
+						session.SetBlend(value)
+					end
+				end,
 				AddSegment = function(kind: RoadMath.SegmentKind)
 					if session then
 						session.AddInFrontOfCamera(kind, activeSettings.AlignToWorld)
