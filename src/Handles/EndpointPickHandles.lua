@@ -13,8 +13,7 @@ local RoadMath = require(script.Parent.Parent.RoadMath)
 
 local BLUE = Color3.fromRGB(70, 130, 255)
 local RED = Color3.fromRGB(255, 70, 70)
-local MARKER_RADIUS = 1.2
-local MARKER_INSET = 1.4
+local HOVER_RECT_THICKNESS = 0.5
 local HOVER_HANDLE_ID = "RoadEndpointHover"
 local DESELECT_HANDLE_ID = "RoadEndpointDeselect"
 local RAY_LENGTH = 10000
@@ -66,46 +65,29 @@ local function isSameEndpoint(a: RoadMath.Endpoint?, b: RoadMath.Endpoint?): boo
 	return a ~= nil and b ~= nil and a.Segment.Model == b.Segment.Model and a.Id == b.Id
 end
 
-function EndpointPickHandles:_renderMarker(key: string, endpoint: RoadMath.Endpoint, isSelectedMarker: boolean, children)
-	local frame = endpoint.WorldCFrame
-	local scale = self._draggerContext:getHandleScale(frame.Position)
-	local position = frame.Position - frame.LookVector * (MARKER_INSET * scale)
-	local radius = MARKER_RADIUS * scale
-	local color = if endpoint.Id == "Blue" then BLUE else RED
-	if isSelectedMarker then
-		radius *= 1.35
-	end
-	children[key] = Roact.createElement("SphereHandleAdornment", {
-		Adornee = workspace.Terrain,
-		CFrame = CFrame.new(position),
-		Radius = radius,
-		Color3 = color,
-		Transparency = if isSelectedMarker then 0 else 0.4,
-		AlwaysOnTop = false,
-		ZIndex = 0,
-	})
-	if isSelectedMarker then
-		children[key .. "Halo"] = Roact.createElement("SphereHandleAdornment", {
-			Adornee = workspace.Terrain,
-			CFrame = CFrame.new(position),
-			Radius = radius * 1.25,
-			Color3 = Color3.new(1, 1, 1),
-			Transparency = 0.6,
-			AlwaysOnTop = false,
-			ZIndex = 0,
-		})
-	end
-end
-
 function EndpointPickHandles:render(hoveredHandleId)
 	local children = {}
+	-- No selection visual: the move/rotate handles sitting at the endpoint
+	-- already communicate what is selected. Hovering shows an always-on-top
+	-- rectangle laid over the end of the segment about to be picked.
 	local selected = self._props.GetSelectedEndpoint()
-	if selected then
-		self:_renderMarker("Selected", selected, true, children)
-	end
-	if hoveredHandleId == HOVER_HANDLE_ID and self._hoverEndpoint
-		and not isSameEndpoint(self._hoverEndpoint, selected) then
-		self:_renderMarker("Hover", self._hoverEndpoint, false, children)
+	local hover = self._hoverEndpoint
+	if hoveredHandleId == HOVER_HANDLE_ID and hover and not isSameEndpoint(hover, selected) then
+		local frame = hover.WorldCFrame
+		local width = hover.Segment.Width
+		local depth = math.min(width * 0.25, 20)
+		children.HoverRect = Roact.createElement("BoxHandleAdornment", {
+			Adornee = workspace.Terrain,
+			-- The frame's LookVector is the outward direction (-Z), so +Z in
+			-- frame space points into the segment: lay the rectangle over the
+			-- last stretch of road before the end face.
+			CFrame = frame * CFrame.new(0, 0, depth / 2),
+			Size = Vector3.new(width, HOVER_RECT_THICKNESS, depth),
+			Color3 = if hover.Id == "Blue" then BLUE else RED,
+			Transparency = 0.5,
+			AlwaysOnTop = true,
+			ZIndex = 0,
+		})
 	end
 	return Roact.createElement("Folder", {}, children)
 end
