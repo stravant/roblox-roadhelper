@@ -106,6 +106,11 @@ end
 
 function AddHandles:render(hoveredHandleId)
 	local children = {}
+	-- While drag-placing the new segment the add handles are stale (they
+	-- belong to the endpoint being extended): hide them until the drag ends.
+	if self._draggingHandleId then
+		return Roact.createElement("Folder", {}, children)
+	end
 	for handleId, handle in self._handles do
 		local hovered = handleId == hoveredHandleId or handleId == self._draggingHandleId
 		local size = MARKER_SIZE * handle.Scale * (if hovered then 1.25 else 1)
