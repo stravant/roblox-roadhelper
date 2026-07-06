@@ -663,12 +663,6 @@ local function createRoadSession(plugin: Plugin)
 		if not camera then
 			return
 		end
-		local template = findTemplate(kind, camera.CFrame.Position)
-		if not template then
-			warn(`RoadHelper: No {kind} road segment found in the place to use as a template.`)
-			return
-		end
-		local width = template.Width
 
 		-- Aim at what the camera is looking at, or a point ahead of the camera
 		local raycastParams = RaycastParams.new()
@@ -678,6 +672,22 @@ local function createRoadSession(plugin: Plugin)
 		local target = if result
 			then result.Position
 			else camera.CFrame.Position + camera.CFrame.LookVector * 200
+
+		-- Predictable template choice: the selected segment when there is one
+		-- (its appearance is what the user is working with), otherwise the
+		-- segment of the right kind closest to where the new one will spawn.
+		local selected = getSelectedEndpoint()
+		local template: RoadMath.SegmentInfo? = nil
+		if selected and selected.Segment.Kind == kind then
+			template = selected.Segment
+		else
+			template = findTemplate(kind, target)
+		end
+		if not template then
+			warn(`RoadHelper: No {kind} road segment found in the place to use as a template.`)
+			return
+		end
+		local width = template.Width
 
 		local look = camera.CFrame.LookVector * Vector3.new(1, 0, 1)
 		look = if look.Magnitude > 0.01 then look.Unit else Vector3.zAxis
@@ -698,6 +708,16 @@ local function createRoadSession(plugin: Plugin)
 		local generated = newModel:FindFirstChild("Generated")
 		if generated then
 			generated:Destroy()
+		end
+		-- With a selection, appearance follows the selected segment even when
+		-- the template for the geometry kind is some other segment
+		if selected and selected.Segment.Model ~= template.Model then
+			for name, value in selected.Segment.Model:GetAttributes() do
+				if not GEOMETRY_ATTRIBUTES[name] then
+					newModel:SetAttribute(name, value)
+				end
+			end
+			width = selected.Segment.Width
 		end
 		newModel:SetAttribute("Flip", false)
 		for _, axis in ADJUST_AXES do
