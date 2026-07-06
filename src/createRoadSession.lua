@@ -299,19 +299,14 @@ local function createRoadSession(plugin: Plugin)
 		table.clear(redoSelectionStack)
 	end
 
-	-- Find the mated partner of the selected endpoint with an on-demand
-	-- spatial query around the endpoint, so we never have to eagerly inspect
-	-- the whole place.
-	local function getPartnerEndpoint(): RoadMath.Endpoint?
-		local selected = getSelectedEndpoint()
-		if not selected then
-			return nil
-		end
+	-- Find the mated partner of an endpoint with an on-demand spatial query
+	-- around it, so we never have to eagerly inspect the whole place.
+	local function partnerOfEndpoint(endpoint: RoadMath.Endpoint): RoadMath.Endpoint?
 		local params = OverlapParams.new()
 		params.FilterType = Enum.RaycastFilterType.Exclude
-		params.FilterDescendantsInstances = { selected.Segment.Model }
+		params.FilterDescendantsInstances = { endpoint.Segment.Model }
 		local parts = workspace:GetPartBoundsInRadius(
-			selected.WorldCFrame.Position, JOINT_SEARCH_RADIUS, params)
+			endpoint.WorldCFrame.Position, JOINT_SEARCH_RADIUS, params)
 		local candidates: { RoadMath.SegmentInfo } = {}
 		local seen: { [Model]: boolean } = {}
 		for _, part in parts do
@@ -321,7 +316,12 @@ local function createRoadSession(plugin: Plugin)
 				table.insert(candidates, segment)
 			end
 		end
-		return RoadMath.findJoint(selected, candidates)
+		return RoadMath.findJoint(endpoint, candidates)
+	end
+
+	local function getPartnerEndpoint(): RoadMath.Endpoint?
+		local selected = getSelectedEndpoint()
+		return if selected then partnerOfEndpoint(selected) else nil
 	end
 
 	-- Endpoint snapping: while free-dragging an endpoint or drag-placing a new
@@ -918,6 +918,7 @@ local function createRoadSession(plugin: Plugin)
 		}),
 		EndpointPickHandles.new(draggerContext, {
 			GetSelectedEndpoint = getSelectedEndpoint,
+			GetPartner = partnerOfEndpoint,
 			Select = function(endpoint: RoadMath.Endpoint)
 				-- Must be a no-op when re-selecting the same endpoint: the
 				-- framework responds to our selection-changed nudge by

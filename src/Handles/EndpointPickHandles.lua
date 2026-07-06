@@ -13,6 +13,7 @@ local RoadMath = require(script.Parent.Parent.RoadMath)
 
 local BLUE = Color3.fromRGB(70, 130, 255)
 local RED = Color3.fromRGB(255, 70, 70)
+local PURPLE = Color3.fromRGB(170, 85, 255)
 local HOVER_RECT_THICKNESS = 0.5
 local HOVER_HANDLE_ID = "RoadEndpointHover"
 local DESELECT_HANDLE_ID = "RoadEndpointDeselect"
@@ -23,6 +24,7 @@ EndpointPickHandles.__index = EndpointPickHandles
 
 export type Props = {
 	GetSelectedEndpoint: () -> RoadMath.Endpoint?,
+	GetPartner: (endpoint: RoadMath.Endpoint) -> RoadMath.Endpoint?,
 	Select: (endpoint: RoadMath.Endpoint) -> (),
 	Deselect: () -> (),
 }
@@ -73,17 +75,36 @@ function EndpointPickHandles:render(hoveredHandleId)
 	local selected = self._props.GetSelectedEndpoint()
 	local hover = self._hoverEndpoint
 	if hoveredHandleId == HOVER_HANDLE_ID and hover and not isSameEndpoint(hover, selected) then
+		local partner = self._props.GetPartner(hover)
+		if partner and isSameEndpoint(partner, selected) then
+			-- The hovered end is the mate of the selected one: the joint is
+			-- already selected, so offer no re-pick affordance for it.
+			return Roact.createElement("Folder", {}, children)
+		end
 		local frame = hover.WorldCFrame
 		local width = hover.Segment.Width
+		local color = if hover.Id == "Blue" then BLUE else RED
+		local intoSegment = true
+		if partner then
+			-- Closed joint: one purple marker centred on the join, looking
+			-- identical whichever side is hovered (a box is symmetric under
+			-- the 180 degree yaw between the two ends' frames).
+			color = PURPLE
+			width = math.max(width, partner.Segment.Width)
+			frame = (frame - frame.Position)
+				+ (frame.Position + partner.WorldCFrame.Position) / 2
+			intoSegment = false
+		end
 		local depth = math.min(width * 0.25, 20)
 		children.HoverRect = Roact.createElement("BoxHandleAdornment", {
 			Adornee = workspace.Terrain,
 			-- The frame's LookVector is the outward direction (-Z), so +Z in
-			-- frame space points into the segment: lay the rectangle over the
-			-- last stretch of road before the end face.
-			CFrame = frame * CFrame.new(0, 0, depth / 2),
+			-- frame space points into the segment: an open end lays the
+			-- rectangle over the last stretch of road before the end face,
+			-- while a joint straddles it symmetrically.
+			CFrame = frame * CFrame.new(0, 0, if intoSegment then depth / 2 else 0),
 			Size = Vector3.new(width, HOVER_RECT_THICKNESS, depth),
-			Color3 = if hover.Id == "Blue" then BLUE else RED,
+			Color3 = color,
 			Transparency = 0.5,
 			AlwaysOnTop = true,
 			ZIndex = 0,
