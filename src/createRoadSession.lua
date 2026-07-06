@@ -324,6 +324,74 @@ local function createRoadSession(plugin: Plugin)
 		return RoadMath.findJoint(selected, candidates)
 	end
 
+	-- Endpoint snapping: while free-dragging an endpoint or drag-placing a new
+	-- segment, pull the requested position onto a nearby open end of another
+	-- segment so that ends mate exactly.
+	local SNAP_DISTANCE = 12
+
+	local function isEndpointOpen(endpoint: RoadMath.Endpoint, excludeSet: { [Model]: boolean }): boolean
+		local params = OverlapParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		local exclusions: { Instance } = { endpoint.Segment.Model }
+		for model in excludeSet do
+			table.insert(exclusions, model)
+		end
+		params.FilterDescendantsInstances = exclusions
+		local parts = workspace:GetPartBoundsInRadius(
+			endpoint.WorldCFrame.Position, JOINT_SEARCH_RADIUS, params)
+		local candidates: { RoadMath.SegmentInfo } = {}
+		local seen: { [Model]: boolean } = {}
+		for _, part in parts do
+			local segment = RoadMath.segmentFromDescendant(part)
+			if segment and not seen[segment.Model] and not excludeSet[segment.Model] then
+				seen[segment.Model] = true
+				table.insert(candidates, segment)
+			end
+		end
+		return RoadMath.findJoint(endpoint, candidates) == nil
+	end
+
+	local function snapToOpenEndpoint(
+		position: Vector3,
+		movingModels: { Model },
+		excludeEndpoint: EndpointRef?
+	): Vector3
+		local excludeSet: { [Model]: boolean } = {}
+		local exclusions: { Instance } = {}
+		for _, model in movingModels do
+			excludeSet[model] = true
+			table.insert(exclusions, model)
+		end
+		local params = OverlapParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = exclusions
+		-- Any segment whose end is within snap range has parts near the end,
+		-- so a slightly padded part query is enough to find all candidates
+		local parts = workspace:GetPartBoundsInRadius(position, SNAP_DISTANCE + 4, params)
+		local best: RoadMath.Endpoint? = nil
+		local bestDistance = SNAP_DISTANCE
+		local seen: { [Model]: boolean } = {}
+		for _, part in parts do
+			local segment = RoadMath.segmentFromDescendant(part)
+			if not segment or seen[segment.Model] or excludeSet[segment.Model] then
+				continue
+			end
+			seen[segment.Model] = true
+			for _, id in { "Blue" :: RoadMath.EndpointId, "Red" :: RoadMath.EndpointId } do
+				if excludeEndpoint and excludeEndpoint.Model == segment.Model and excludeEndpoint.Id == id then
+					continue
+				end
+				local endpoint = RoadMath.getEndpoint(segment, id)
+				local distance = (endpoint.WorldCFrame.Position - position).Magnitude
+				if distance <= bestDistance and isEndpointOpen(endpoint, excludeSet) then
+					bestDistance = distance
+					best = endpoint
+				end
+			end
+		end
+		return if best then best.WorldCFrame.Position else position
+	end
+
 	--------------------------------------------------------------------------
 	-- Dragger context and schema
 	--------------------------------------------------------------------------
@@ -479,7 +547,14 @@ local function createRoadSession(plugin: Plugin)
 		beginRecording("Move Endpoint")
 	end
 
-	local function applyMove(newWorldPosition: Vector3)
+	local function applyMove(newWorldPosition: Vector3, snapToEnds: boolean?)
+		if snapToEnds then
+			local movingModels = {}
+			for _, target in moveTargets do
+				table.insert(movingModels, target.Model)
+			end
+			newWorldPosition = snapToOpenEndpoint(newWorldPosition, movingModels, nil)
+		end
 		for _, target in moveTargets do
 			local info = RoadMath.getSegmentInfo(target.Model)
 			if info then
@@ -641,6 +716,7 @@ local function createRoadSession(plugin: Plugin)
 
 	-- Add-drag state (from AddHandles)
 	local addDragRef: EndpointRef? = nil
+	local addSourceRef: EndpointRef? = nil
 	local addBeforeSelection: SelectionSnapshot = nil
 
 	local function startAdd(turn: RoadMath.TurnDirection): number?
@@ -658,6 +734,7 @@ local function createRoadSession(plugin: Plugin)
 			return nil
 		end
 		addDragRef = { Model = newModel, Id = farId }
+		addSourceRef = { Model = selected.Segment.Model, Id = selected.Id }
 		selectedRef = addDragRef
 		changeSignal:Fire()
 		local farEndpoint = resolveEndpoint(addDragRef)
@@ -669,6 +746,9 @@ local function createRoadSession(plugin: Plugin)
 		if not ref then
 			return
 		end
+		-- Snap onto nearby open ends, but never back onto the endpoint this
+		-- segment was just added to (that would make it degenerate)
+		worldPosition = snapToOpenEndpoint(worldPosition, { ref.Model }, addSourceRef)
 		local info = RoadMath.getSegmentInfo(ref.Model)
 		if info then
 			local ok, err = pcall(function()
@@ -683,6 +763,7 @@ local function createRoadSession(plugin: Plugin)
 
 	local function endAdd()
 		addDragRef = nil
+		addSourceRef = nil
 		if activeRecordingName then
 			pushSelectionHistory(activeRecordingName, addBeforeSelection, snapshotSelection())
 		end

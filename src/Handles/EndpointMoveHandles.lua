@@ -63,7 +63,7 @@ export type Props = {
 	-- being moved by the drag)
 	GetDragExclusions: () -> { Instance },
 	StartMove: () -> (),
-	ApplyMove: (newWorldPosition: Vector3) -> (),
+	ApplyMove: (newWorldPosition: Vector3, snapToEnds: boolean?) -> (),
 	EndMove: () -> (),
 }
 
@@ -259,7 +259,7 @@ function EndpointMoveHandles:mouseDrag(mouseRay)
 		if target then
 			local delta = target - self._startPosition
 			delta = Vector3.new(snapToGrid(delta.X), snapToGrid(delta.Y), snapToGrid(delta.Z))
-			self._props.ApplyMove(self._startPosition + delta)
+			self._props.ApplyMove(self._startPosition + delta, true)
 		end
 		return
 	end
