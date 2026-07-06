@@ -131,7 +131,7 @@ function AddHandles:render(hoveredHandleId)
 			Color3 = handle.Color,
 			Transparency = if hovered then 0 else 0.25,
 			AlwaysOnTop = false,
-			AdornShading = Enum.AdornShading.XRay,
+			Shading = Enum.AdornShading.XRay,
 			ZIndex = 0,
 		})
 	end

@@ -144,7 +144,7 @@ function EndpointMoveHandles:_renderFreeHandle(children, hovered: boolean)
 		Color3 = FREE_COLOR,
 		Transparency = if hovered then 0 else 0.25,
 		AlwaysOnTop = false,
-		AdornShading = Enum.AdornShading.XRay,
+		Shading = Enum.AdornShading.XRay,
 		ZIndex = 0,
 	})
 end
