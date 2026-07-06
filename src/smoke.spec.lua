@@ -17,5 +17,8 @@ return function(t: TestTypes.TestContext)
 		require("./Handles/EndpointMoveHandles")
 		require("./Handles/EndpointRotateHandles")
 		require("./Handles/AddHandles")
+		-- The packaged fallback generator templates must at least load
+		require("./Templates/StraightRoadGenerator")
+		require("./Templates/CurveRoadGenerator")
 	end)
 end

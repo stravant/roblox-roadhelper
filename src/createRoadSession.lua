@@ -118,6 +118,34 @@ local function createRoadSchema(getFocusCFrame: () -> CFrame)
 	return schema
 end
 
+local GENERATOR_MODULE_NAMES: { [RoadMath.SegmentKind]: string } = {
+	Straight = "StraightRoadGenerator",
+	Curve = "CurveRoadGenerator",
+}
+
+-- Build a brand new segment from the generator templates packaged inside the
+-- plugin, so RoadHelper works even in a place with no road segments yet.
+local Templates = script.Parent.Templates
+local function createFallbackSegmentModel(kind: RoadMath.SegmentKind): Model?
+	local ok, model = pcall(function()
+		return Instance.new("ProceduralModel" :: any) :: any
+	end)
+	if not ok or not model then
+		warn("RoadHelper: This Studio version doesn't support creating ProceduralModels.")
+		return nil
+	end
+	model.Name = if kind == "Straight" then "StraightRoad" else "CurveRoad"
+	local generator = Templates:FindFirstChild(GENERATOR_MODULE_NAMES[kind])
+	if generator then
+		local generatorCopy = generator:Clone()
+		generatorCopy.Parent = model
+		-- The engine binds the model to its generator through this property;
+		-- it does not discover the module by name.
+		model.Generator = generatorCopy
+	end
+	return model :: Model
+end
+
 -- Attributes describing segment geometry rather than appearance; these are
 -- not copied onto newly added segments.
 local GEOMETRY_ATTRIBUTES = {
@@ -567,16 +595,23 @@ local function createRoadSession(plugin: Plugin)
 		local template = if openEnd.Segment.Kind == kind
 			then openEnd.Segment
 			else findTemplate(kind, openEnd.WorldCFrame.Position)
-		if not template then
-			warn(`RoadHelper: No {kind} road segment found in the place to use as a template.`)
-			return nil, nil
-		end
 
-		local newModel = template.Model:Clone()
-		-- Drop the stale generated geometry; it regenerates for the new size
-		local generated = newModel:FindFirstChild("Generated")
-		if generated then
-			generated:Destroy()
+		local newModel: Model?
+		if template then
+			newModel = template.Model:Clone()
+			-- Drop the stale generated geometry; it regenerates for the new size
+			local generated = newModel:FindFirstChild("Generated")
+			if generated then
+				generated:Destroy()
+			end
+		else
+			-- No segment of this kind anywhere: build one from the packaged
+			-- generator templates
+			newModel = createFallbackSegmentModel(kind)
+		end
+		if not newModel then
+			warn(`RoadHelper: No {kind} road segment available to use as a template.`)
+			return nil, nil
 		end
 
 		-- Appearance follows the segment being extended
@@ -683,11 +718,10 @@ local function createRoadSession(plugin: Plugin)
 		else
 			template = findTemplate(kind, target)
 		end
-		if not template then
-			warn(`RoadHelper: No {kind} road segment found in the place to use as a template.`)
-			return
-		end
-		local width = template.Width
+		local width = if template
+			then template.Width
+			elseif selected then selected.Segment.Width
+			else 64
 
 		local look = camera.CFrame.LookVector * Vector3.new(1, 0, 1)
 		look = if look.Magnitude > 0.01 then look.Unit else Vector3.zAxis
@@ -704,14 +738,24 @@ local function createRoadSession(plugin: Plugin)
 
 		local beforeSelection = snapshotSelection()
 		beginRecording("Add Segment")
-		local newModel = template.Model:Clone()
-		local generated = newModel:FindFirstChild("Generated")
-		if generated then
-			generated:Destroy()
+		local newModel: Model?
+		if template then
+			newModel = template.Model:Clone()
+			local generated = newModel:FindFirstChild("Generated")
+			if generated then
+				generated:Destroy()
+			end
+		else
+			newModel = createFallbackSegmentModel(kind)
+		end
+		if not newModel then
+			finishRecording()
+			warn(`RoadHelper: No {kind} road segment available to use as a template.`)
+			return
 		end
 		-- With a selection, appearance follows the selected segment even when
 		-- the template for the geometry kind is some other segment
-		if selected and selected.Segment.Model ~= template.Model then
+		if selected and (template == nil or selected.Segment.Model ~= template.Model) then
 			for name, value in selected.Segment.Model:GetAttributes() do
 				if not GEOMETRY_ATTRIBUTES[name] then
 					newModel:SetAttribute(name, value)
@@ -729,7 +773,7 @@ local function createRoadSession(plugin: Plugin)
 		local blueLocal = RoadMath.localEndpointFrame(kind, size, width, false, "Blue");
 		(newModel :: any).Size = size
 		newModel:PivotTo(rotation + (target - rotation:VectorToWorldSpace(blueLocal.Position)))
-		newModel.Parent = template.Model.Parent
+		newModel.Parent = if template then template.Model.Parent else workspace
 
 		selectedRef = { Model = newModel, Id = "Red" }
 		if activeRecordingName then
