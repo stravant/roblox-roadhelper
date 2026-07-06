@@ -726,6 +726,18 @@ local function createRoadSession(plugin: Plugin)
 				local endpoint = getSelectedEndpoint()
 				return if endpoint then endpoint.WorldCFrame else nil
 			end,
+			GetDragExclusions = function(): { Instance }
+				local exclusions: { Instance } = {}
+				local selected = getSelectedEndpoint()
+				if selected then
+					table.insert(exclusions, selected.Segment.Model)
+					local partner = getPartnerEndpoint()
+					if partner then
+						table.insert(exclusions, partner.Segment.Model)
+					end
+				end
+				return exclusions
+			end,
 			StartMove = startMove,
 			ApplyMove = applyMove,
 			EndMove = endMove,
