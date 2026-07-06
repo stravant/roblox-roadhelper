@@ -125,11 +125,17 @@ local function ParametersPanel(props: {
 end
 
 local function AddPanel(props: {
+	SelectionState: createRoadSession.SelectionState,
 	CurrentSettings: Settings.RoadHelperSettings,
 	UpdatedSettings: () -> (),
 	AddSegment: (kind: RoadMath.SegmentKind) -> (),
 	LayoutOrder: number?,
 })
+	-- With an endpoint selected the add handles in the viewport are the way to
+	-- extend the road; the camera-add section only applies when nothing is.
+	if props.SelectionState.Kind ~= "none" then
+		return nil :: any
+	end
 	local nextOrder = createNextOrder()
 	return e(SubPanel, {
 		Title = "Add",
@@ -265,6 +271,7 @@ local function RoadHelperGui(props: {
 			LayoutOrder = nextOrder(),
 		}),
 		AddPanel = e(AddPanel, {
+			SelectionState = props.SelectionState,
 			CurrentSettings = props.CurrentSettings,
 			UpdatedSettings = props.UpdatedSettings,
 			AddSegment = props.AddSegment,
