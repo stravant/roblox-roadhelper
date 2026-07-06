@@ -701,8 +701,9 @@ local function createRoadSession(plugin: Plugin)
 			newModel:SetAttribute(RoadMath.adjustAttributeName("Blue", axis), 0)
 			newModel:SetAttribute(RoadMath.adjustAttributeName("Red", axis), 0)
 		end
-		-- The joining end must mate with the open end's grade/bank
+		-- The joining end must mate with the open end's dir/grade/bank
 		local matching = RoadMath.matchingAdjust(openEnd, joinId)
+		newModel:SetAttribute(RoadMath.adjustAttributeName(joinId, "Dir"), matching.Dir)
 		newModel:SetAttribute(RoadMath.adjustAttributeName(joinId, "Grade"), matching.Grade)
 		newModel:SetAttribute(RoadMath.adjustAttributeName(joinId, "Bank"), matching.Bank);
 

@@ -397,22 +397,21 @@ return function(t: TestTypes.TestContext)
 		t.expect(far.WorldCFrame.Position.X < -10).toBe(true)
 	end)
 
-	t.test("placeNewSegment: follows the open end's actual (adjusted) direction", function()
-		local segA = makeSegment("Straight", Vector3.new(WIDTH, 0, 200), CFrame.identity)
-		local mockModel = {
-			attrs = { AdjustRedDir = 30 },
-		}
-		(mockModel :: any).GetAttribute = function(self, name)
-			return self.attrs[name]
-		end
-		segA.Model = mockModel :: any
+	t.test("placeNewSegment: joint seals via matching Dir on an adjusted end", function()
+		local segA = makeSegment("Straight", Vector3.new(WIDTH, 0, 200), CFrame.identity);
+		(segA.Model :: any).attrs.AdjustRedDir = 30
 		local openEnd = RoadMath.getEndpoint(segA, "Red")
-		local _, joinId, pivot, size = RoadMath.placeNewSegment(openEnd, "Straight", WIDTH)
-		local newSeg = makeSegment("Straight", size, pivot)
+		local kind, joinId, pivot, size = RoadMath.placeNewSegment(openEnd, "Straight", WIDTH)
+		local matching = RoadMath.matchingAdjust(openEnd, joinId)
+		local newSeg = makeSegment(kind, size, pivot);
+		(newSeg.Model :: any).attrs[RoadMath.adjustAttributeName(joinId, "Dir")] = matching.Dir
 		local joined = RoadMath.getEndpoint(newSeg, joinId)
-		-- The joining face must oppose the actual outward = +Z yawed 30deg clockwise
-		local expectedOutward = CFrame.Angles(0, math.rad(30), 0):VectorToWorldSpace(Vector3.new(0, 0, 1))
-		expectFuzzy(t, joined.WorldCFrame.LookVector, -expectedOutward)
+		-- The model itself stays nominal-frame aligned, but with the matching
+		-- Dir applied the two faces' actual directions must oppose exactly,
+		-- sealing the joint.
+		local openActual = RoadMath.actualOutwardDirection(openEnd)
+		local joinActual = RoadMath.actualOutwardDirection(joined)
+		expectFuzzy(t, joinActual, -openActual)
 	end)
 
 	t.test("matchingAdjust: negates for same-color joins, copies for opposite", function()
@@ -433,5 +432,32 @@ return function(t: TestTypes.TestContext)
 		local redJoin = RoadMath.matchingAdjust(openEnd, "Red")
 		t.expect(redJoin.Grade).toBe(-10)
 		t.expect(redJoin.Bank).toBe(-5)
+	end)
+
+	t.test("matchingAdjust: Dir carries the open end's effective yaw", function()
+		local segA = makeSegment("Straight", Vector3.new(WIDTH, 0, 200), CFrame.identity);
+		(segA.Model :: any).attrs.AdjustRedDir = 15
+		local openEnd = RoadMath.getEndpoint(segA, "Red")
+		-- Same world yaw regardless of which end of the new segment joins
+		t.expect(RoadMath.matchingAdjust(openEnd, "Blue").Dir).toBe(15)
+		t.expect(RoadMath.matchingAdjust(openEnd, "Red").Dir).toBe(15)
+		-- A flipped straight negates the effective yaw of its Dir attributes
+		segA.Flip = true
+		t.expect(RoadMath.matchingAdjust(openEnd, "Blue").Dir).toBe(-15)
+	end)
+
+	t.test("placeNewSegment: aligns to the nominal frame despite end Dir", function()
+		local segA = makeSegment("Straight", Vector3.new(WIDTH, 0, 200), CFrame.identity);
+		(segA.Model :: any).attrs.AdjustRedDir = 30
+		local openEnd = RoadMath.getEndpoint(segA, "Red")
+		local _, joinId, pivot, size = RoadMath.placeNewSegment(openEnd, "Straight", WIDTH)
+		-- The new model must stay world-aligned like its source rather than
+		-- being yawed 30 degrees to the end's rotated face: extending an
+		-- identity-aligned segment must produce an axis-aligned pivot.
+		t.expect(math.abs(pivot.LookVector.Z) > 0.99999).toBe(true)
+		-- And the joining ends still coincide (positions are Dir-invariant)
+		local newSeg = makeSegment("Straight", size, pivot)
+		local joinEnd = RoadMath.getEndpoint(newSeg, joinId)
+		t.expect((joinEnd.WorldCFrame.Position - openEnd.WorldCFrame.Position).Magnitude < 0.001).toBe(true)
 	end)
 end

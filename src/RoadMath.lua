@@ -369,9 +369,14 @@ function RoadMath.adjustDeltaSign(selected: Endpoint, target: Endpoint, axis: Ad
 end
 
 -- The Adjust values a newly added segment's joining end must have to mate
--- flush with the given open end. Dir is always zero because new segments are
--- yawed so their nominal frame aligns with the open end's actual face.
-function RoadMath.matchingAdjust(openEnd: Endpoint, newEndId: EndpointId): { Grade: number, Bank: number }
+-- flush with the given open end. The new model is placed aligned with the
+-- open end's nominal frame (not its Dir-rotated face), so the joining end
+-- needs the same effective world Dir yaw as the open end: rotating both
+-- faces of a joint by the same world yaw keeps them flush. The world yaw of
+-- any end is flipFactor("Dir") * attribute about +Y regardless of end color,
+-- and the new segment is unflipped, so its attribute is the effective yaw
+-- directly.
+function RoadMath.matchingAdjust(openEnd: Endpoint, newEndId: EndpointId): { Dir: number, Grade: number, Bank: number }
 	local openColorSign = if openEnd.Id == "Red" then 1 else -1
 	local newColorSign = if newEndId == "Red" then 1 else -1
 	local k = -openColorSign * newColorSign
@@ -379,6 +384,7 @@ function RoadMath.matchingAdjust(openEnd: Endpoint, newEndId: EndpointId): { Gra
 	-- values must be converted through its own flip factors to get their
 	-- actual world meaning.
 	return {
+		Dir = RoadMath.flipFactor(openEnd.Segment, "Dir") * RoadMath.getAdjustValue(openEnd, "Dir"),
 		Grade = k * RoadMath.flipFactor(openEnd.Segment, "Grade") * RoadMath.getAdjustValue(openEnd, "Grade"),
 		Bank = k * RoadMath.getAdjustValue(openEnd, "Bank"),
 	}
@@ -427,8 +433,11 @@ function RoadMath.placeNewSegment(
 	assert(size)
 
 	-- Yaw the new model so its joining end's nominal outward direction opposes
-	-- the open end's actual face direction.
-	local outward = RoadMath.actualOutwardDirection(openEnd)
+	-- the open end's NOMINAL face direction: the new model stays world-aligned
+	-- the same way as the segment it extends, and any Dir rotation on the open
+	-- end's face is matched by a Dir on the joining end instead (see
+	-- matchingAdjust), keeping the joint flush.
+	local outward = openEnd.WorldCFrame.LookVector
 	local joinLocal = RoadMath.localEndpointFrame(kind, size, width, false, joinId)
 	local targetYaw = yawAngleOf(-outward)
 	local nominalYaw = yawAngleOf(joinLocal.LookVector)
