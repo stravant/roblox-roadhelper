@@ -26,15 +26,15 @@ local defaultAttributes = {
 	AdjustRedBank = 0,
 	Flip = false,
 	Blend = false,
-	BlendColor = Color3.fromRGB(106, 127, 63),
+	BlendColor = Color3.fromRGB(66, 102, 12),
 	BlendMaterial = Enum.Material.Grass,
 	BlendAngle = 30,
 	AdjustShowSnappingHelper = false,
-	TextureLaneMarkings = true,
-	CenterlineColor = Color3.new(244, 205, 47),
-	LaneMarkingColor = Color3.new(163, 161, 165),
+	TextureLaneMarkings = false,
+	CenterlineColor = Color3.fromRGB(244, 205, 47),
+	LaneMarkingColor = Color3.fromRGB(163, 161, 165),
 	RoadColor = Color3.fromRGB(26, 42, 52),
-	SidewalkColor = Color3.new(0.639216, 0.635294, 0.647059),
+	SidewalkColor = Color3.fromRGB(163, 162, 165),
 }
 
 local ROAD_MATERIAL = Enum.Material.Concrete
