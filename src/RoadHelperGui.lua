@@ -266,7 +266,7 @@ local function PresetsPanel(props: {
 	end
 	local tiles: { [string]: any } = {
 		Layout = e("UIGridLayout", {
-			CellSize = UDim2.new(0.5, -3, 0, 54),
+			CellSize = UDim2.new(0.5, -3, 0, 72),
 			CellPadding = UDim2.fromOffset(6, 6),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 		}),
