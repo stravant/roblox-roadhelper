@@ -87,6 +87,16 @@ return function(plugin: Plugin, panel: DockWidgetPluginGui, buttonClicked: Signa
 						session.SetBlend(value)
 					end
 				end,
+				SetSegmentAttribute = function(name: string, value: any)
+					if session then
+						session.SetSegmentAttribute(name, value)
+					end
+				end,
+				SetSizing = function(name: string, value: number)
+					if session then
+						session.SetSizing(name, value)
+					end
+				end,
 				AddSegment = function(kind: RoadMath.SegmentKind)
 					if session then
 						local preset = Presets.ByKey[activeSettings.SelectedPreset]

@@ -447,4 +447,35 @@ function RoadMath.placeNewSegment(
 	return kind, joinId, rotation + pivotPosition, size
 end
 
+--------------------------------------------------------------------------------
+-- Lane layout changes
+--------------------------------------------------------------------------------
+
+--[[
+	Compensate the bounds (and pivot) for a road width change so that BOTH
+	endpoint positions stay exactly where they are (keeping any joints sealed).
+
+	Straight: endpoints sit at (±sway, ·, ±Z/2) with sway = (X - width)/2, so
+	growing X by the width delta keeps sway (and both endpoints) unchanged.
+
+	Curve: blue sits at (-X/2 + w/2, ·, -Z/2) and red at (X/2, ·, Z/2 - w/2)
+	in pivot space. Solving both fixed under a delta d gives X' = X + d/2,
+	Z' = Z + d/2, with the pivot (box centre) shifted by (-d/4, 0, d/4).
+]]
+function RoadMath.solveWidthChange(segment: SegmentInfo, newWidth: number): { Size: Vector3, Pivot: CFrame }
+	local delta = newWidth - segment.Width
+	local size = segment.Size
+	if segment.Kind == "Straight" then
+		return {
+			Size = Vector3.new(math.max(size.X + delta, newWidth), size.Y, size.Z),
+			Pivot = segment.Pivot,
+		}
+	else
+		return {
+			Size = Vector3.new(size.X + delta / 2, size.Y, size.Z + delta / 2),
+			Pivot = segment.Pivot * CFrame.new(-delta / 4, 0, delta / 4),
+		}
+	end
+end
+
 return RoadMath

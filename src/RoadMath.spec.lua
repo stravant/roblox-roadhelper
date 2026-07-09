@@ -446,6 +446,30 @@ return function(t: TestTypes.TestContext)
 		t.expect(RoadMath.matchingAdjust(openEnd, "Blue").Dir).toBe(-15)
 	end)
 
+	t.test("solveWidthChange: straight keeps both endpoints fixed", function()
+		-- Swayed straight so the compensation must preserve sway too
+		local seg = makeSegment("Straight", Vector3.new(WIDTH + 40, 10, 200), CFrame.new(30, 5, -20))
+		local blue = RoadMath.getEndpoint(seg, "Blue").WorldCFrame.Position
+		local red = RoadMath.getEndpoint(seg, "Red").WorldCFrame.Position
+		local solution = RoadMath.solveWidthChange(seg, WIDTH + 24)
+		local newSeg = makeSegment("Straight", solution.Size, solution.Pivot)
+		newSeg.Width = WIDTH + 24
+		expectFuzzy(t, RoadMath.getEndpoint(newSeg, "Blue").WorldCFrame.Position, blue)
+		expectFuzzy(t, RoadMath.getEndpoint(newSeg, "Red").WorldCFrame.Position, red)
+	end)
+
+	t.test("solveWidthChange: curve keeps both endpoints fixed", function()
+		local pivot = CFrame.new(50, 0, 10) * CFrame.Angles(0, math.rad(30), 0)
+		local seg = makeSegment("Curve", Vector3.new(140, 0, 140), pivot)
+		local blue = RoadMath.getEndpoint(seg, "Blue").WorldCFrame.Position
+		local red = RoadMath.getEndpoint(seg, "Red").WorldCFrame.Position
+		local solution = RoadMath.solveWidthChange(seg, WIDTH - 20)
+		local newSeg = makeSegment("Curve", solution.Size, solution.Pivot)
+		newSeg.Width = WIDTH - 20
+		expectFuzzy(t, RoadMath.getEndpoint(newSeg, "Blue").WorldCFrame.Position, blue)
+		expectFuzzy(t, RoadMath.getEndpoint(newSeg, "Red").WorldCFrame.Position, red)
+	end)
+
 	t.test("placeNewSegment: aligns to the nominal frame despite end Dir", function()
 		local segA = makeSegment("Straight", Vector3.new(WIDTH, 0, 200), CFrame.identity);
 		(segA.Model :: any).attrs.AdjustRedDir = 30

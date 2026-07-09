@@ -8,6 +8,7 @@ local Colors = require("./PluginGui/Colors")
 local SubPanel = require("./PluginGui/SubPanel")
 local NumberInput = require("./PluginGui/NumberInput")
 local Checkbox = require("./PluginGui/Checkbox")
+local ChipForToggle = require("./PluginGui/ChipForToggle")
 local PluginGui = require("./PluginGui/PluginGui")
 local OperationButton = require("./PluginGui/OperationButton")
 local PluginGuiTypes = require("./PluginGui/Types")
@@ -121,6 +122,113 @@ local function ParametersPanel(props: {
 			Checked = state.Blend,
 			LayoutOrder = nextOrder(),
 			Changed = props.SetBlend,
+		}),
+	})
+end
+
+local DETAIL_LEVELS = {
+	{ Label = "Low", MaxAngle = 15 },
+	{ Label = "Normal", MaxAngle = 10 },
+	{ Label = "High", MaxAngle = 5 },
+}
+
+local function DetailPanel(props: {
+	SelectionState: createRoadSession.SelectionState,
+	SetSegmentAttribute: (name: string, value: any) -> (),
+	LayoutOrder: number?,
+})
+	local state = props.SelectionState
+	if state.Kind == "none" then
+		return nil :: any
+	end
+	local chips: { [string]: any } = {
+		ListLayout = e("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Left,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		Corner = e("UICorner", {
+			CornerRadius = UDim.new(0, 4),
+		}),
+	}
+	for index, level in DETAIL_LEVELS do
+		chips[level.Label] = e(ChipForToggle, {
+			Text = level.Label,
+			IsCurrent = state.MaxAngle == level.MaxAngle,
+			LayoutOrder = index,
+			OnClick = function()
+				props.SetSegmentAttribute("MaxAngle", level.MaxAngle)
+			end,
+		})
+	end
+	return e(SubPanel, {
+		Title = "Detail Level",
+		Padding = UDim.new(0, 6),
+		LayoutOrder = props.LayoutOrder,
+	}, {
+		TexturedMarkings = e(Checkbox, {
+			Label = "Textured lane markings",
+			Checked = state.TextureLaneMarkings,
+			LayoutOrder = 1,
+			Changed = function(checked: boolean)
+				props.SetSegmentAttribute("TextureLaneMarkings", checked)
+			end,
+		}),
+		Chips = e("Frame", {
+			Size = UDim2.new(1, 0, 0, 0),
+			BorderSizePixel = 0,
+			BackgroundColor3 = Colors.ACTION_BLUE,
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = 2,
+		}, chips),
+	})
+end
+
+local function SizingPanel(props: {
+	SelectionState: createRoadSession.SelectionState,
+	SetSizing: (name: string, value: number) -> (),
+	LayoutOrder: number?,
+})
+	local state = props.SelectionState
+	if state.Kind == "none" then
+		return nil :: any
+	end
+	return e(SubPanel, {
+		Title = "Sizing",
+		Padding = UDim.new(0, 6),
+		LayoutOrder = props.LayoutOrder,
+	}, {
+		LaneCountInput = e(NumberInput, {
+			Label = "Lanes",
+			Value = state.LaneCount,
+			LayoutOrder = 1,
+			ValueEntered = function(value: number): number?
+				local count = math.max(math.round(value), 1)
+				props.SetSizing("LaneCount", count)
+				return count
+			end,
+		}),
+		LaneWidthInput = e(NumberInput, {
+			Label = "Lane Width",
+			Value = state.LaneWidth,
+			LayoutOrder = 2,
+			ValueEntered = function(value: number): number?
+				if value <= 0 then
+					return nil
+				end
+				props.SetSizing("LaneWidth", value)
+				return value
+			end,
+		}),
+		SidewalkWidthInput = e(NumberInput, {
+			Label = "Sidewalk",
+			Value = state.SidewalkWidth,
+			LayoutOrder = 3,
+			ValueEntered = function(value: number): number?
+				local width = math.max(value, 0)
+				props.SetSizing("SidewalkWidth", width)
+				return width
+			end,
 		}),
 	})
 end
@@ -336,6 +444,8 @@ local function RoadHelperGui(props: {
 	SelectionState: createRoadSession.SelectionState,
 	SetAdjustValue: (axis: RoadMath.AdjustAxis, value: number) -> (),
 	SetBlend: (value: boolean) -> (),
+	SetSegmentAttribute: (name: string, value: any) -> (),
+	SetSizing: (name: string, value: number) -> (),
 	AddSegment: (kind: RoadMath.SegmentKind) -> (),
 	CurrentSettings: Settings.RoadHelperSettings,
 	UpdatedSettings: () -> (),
@@ -361,6 +471,16 @@ local function RoadHelperGui(props: {
 			SelectionState = props.SelectionState,
 			SetAdjustValue = props.SetAdjustValue,
 			SetBlend = props.SetBlend,
+			LayoutOrder = nextOrder(),
+		}),
+		DetailPanel = e(DetailPanel, {
+			SelectionState = props.SelectionState,
+			SetSegmentAttribute = props.SetSegmentAttribute,
+			LayoutOrder = nextOrder(),
+		}),
+		SizingPanel = e(SizingPanel, {
+			SelectionState = props.SelectionState,
+			SetSizing = props.SetSizing,
 			LayoutOrder = nextOrder(),
 		}),
 		AddPanel = e(AddPanel, {

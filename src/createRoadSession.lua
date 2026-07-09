@@ -58,6 +58,11 @@ export type SelectionState = {
 	Grade: number,
 	Bank: number,
 	Blend: boolean,
+	TextureLaneMarkings: boolean,
+	MaxAngle: number,
+	LaneCount: number,
+	LaneWidth: number,
+	SidewalkWidth: number,
 }
 
 local function createFixedSelection(onCleared: () -> ())
@@ -1060,7 +1065,50 @@ local function createRoadSession(plugin: Plugin)
 			Grade = RoadMath.getAdjustValue(selected, "Grade"),
 			Bank = RoadMath.getAdjustValue(selected, "Bank"),
 			Blend = selected.Segment.Model:GetAttribute("Blend") == true,
+			TextureLaneMarkings = selected.Segment.Model:GetAttribute("TextureLaneMarkings") == true,
+			MaxAngle = (selected.Segment.Model:GetAttribute("MaxAngle") :: number?) or 10,
+			LaneCount = (selected.Segment.Model:GetAttribute("LaneCount") :: number?) or 2,
+			LaneWidth = (selected.Segment.Model:GetAttribute("LaneWidth") :: number?) or 24,
+			SidewalkWidth = (selected.Segment.Model:GetAttribute("SidewalkWidth") :: number?) or 8,
 		} :: any
+	end
+
+	-- Set a plain attribute of the selected endpoint's segment (from the UI)
+	function session.SetSegmentAttribute(name: string, value: any)
+		local selected = getSelectedEndpoint()
+		if not selected then
+			return
+		end
+		beginRecording("Edit Road")
+		selected.Segment.Model:SetAttribute(name, value)
+		finishRecording()
+		changeSignal:Fire()
+	end
+
+	-- Change the lane layout (LaneCount/LaneWidth/SidewalkWidth), compensating
+	-- the bounds and pivot so both endpoints stay exactly where they are and
+	-- any joints stay sealed.
+	function session.SetSizing(name: string, value: number)
+		local selected = getSelectedEndpoint()
+		if not selected then
+			return
+		end
+		local model = selected.Segment.Model
+		local layout: { [string]: number } = {
+			LaneCount = (model:GetAttribute("LaneCount") :: number?) or 2,
+			LaneWidth = (model:GetAttribute("LaneWidth") :: number?) or 24,
+			SidewalkWidth = (model:GetAttribute("SidewalkWidth") :: number?) or 8,
+		}
+		layout[name] = value
+		local newWidth = layout.LaneCount * layout.LaneWidth + 2 * layout.SidewalkWidth
+		beginRecording("Resize Road")
+		model:SetAttribute(name, value)
+		local solution = RoadMath.solveWidthChange(selected.Segment, newWidth);
+		(model :: any).Size = solution.Size
+		model:PivotTo(solution.Pivot)
+		finishRecording()
+		updateDragger()
+		changeSignal:Fire()
 	end
 
 	-- Toggle the blend skirt of the selected endpoint's segment
