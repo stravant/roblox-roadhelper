@@ -7,6 +7,7 @@ local ReactRoblox = require(Packages.ReactRoblox)
 local Signal = require(Packages.Signal)
 
 local createRoadSession = require("./createRoadSession")
+local Presets = require("./Presets")
 local Settings = require("./Settings")
 local RoadHelperGui = require("./RoadHelperGui")
 local RoadMath = require("./RoadMath")
@@ -88,7 +89,12 @@ return function(plugin: Plugin, panel: DockWidgetPluginGui, buttonClicked: Signa
 				end,
 				AddSegment = function(kind: RoadMath.SegmentKind)
 					if session then
-						session.AddInFrontOfCamera(kind, activeSettings.AlignToWorld)
+						local preset = Presets.ByKey[activeSettings.SelectedPreset]
+						session.AddInFrontOfCamera(
+							kind,
+							activeSettings.AlignToWorld,
+							if preset then preset.Attributes else nil
+						)
 					end
 				end,
 				CurrentSettings = activeSettings,

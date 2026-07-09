@@ -782,8 +782,14 @@ local function createRoadSession(plugin: Plugin)
 		changeSignal:Fire()
 	end
 
-	-- Add a free-standing segment in front of the camera (UI buttons)
-	local function addInFrontOfCamera(kind: RoadMath.SegmentKind, alignToWorld: boolean?)
+	-- Add a free-standing segment in front of the camera (UI buttons). When
+	-- presetAttributes is given the new segment takes that appearance instead
+	-- of inheriting one from the selection or a nearby template.
+	local function addInFrontOfCamera(
+		kind: RoadMath.SegmentKind,
+		alignToWorld: boolean?,
+		presetAttributes: { [string]: any }?
+	)
 		local camera = workspace.CurrentCamera
 		if not camera then
 			return
@@ -808,8 +814,9 @@ local function createRoadSession(plugin: Plugin)
 		else
 			template = findTemplate(kind, target)
 		end
-		local width = if template
-			then template.Width
+		local width = if presetAttributes
+			then presetAttributes.LaneCount * presetAttributes.LaneWidth + 2 * presetAttributes.SidewalkWidth
+			elseif template then template.Width
 			elseif selected then selected.Segment.Width
 			else 64
 
@@ -821,10 +828,6 @@ local function createRoadSession(plugin: Plugin)
 			yaw = math.round(yaw / (math.pi / 2)) * (math.pi / 2)
 		end
 		local rotation = CFrame.Angles(0, yaw, 0)
-
-		local size = if kind == "Straight"
-			then Vector3.new(width, 0, math.max(2 * width, RoadMath.MIN_LENGTH))
-			else Vector3.new(2 * width, 0, 2 * width)
 
 		local beforeSelection = snapshotSelection()
 		beginRecording("Add Segment")
@@ -843,9 +846,14 @@ local function createRoadSession(plugin: Plugin)
 			warn(`RoadHelper: No {kind} road segment available to use as a template.`)
 			return
 		end
-		-- With a selection, appearance follows the selected segment even when
-		-- the template for the geometry kind is some other segment
-		if selected and (template == nil or selected.Segment.Model ~= template.Model) then
+		if presetAttributes then
+			-- The preset decides the appearance outright
+			for name, value in presetAttributes do
+				newModel:SetAttribute(name, value)
+			end
+		elseif selected and (template == nil or selected.Segment.Model ~= template.Model) then
+			-- With a selection, appearance follows the selected segment even
+			-- when the template for the geometry kind is some other segment
 			for name, value in selected.Segment.Model:GetAttributes() do
 				if not GEOMETRY_ATTRIBUTES[name] then
 					newModel:SetAttribute(name, value)
@@ -858,6 +866,10 @@ local function createRoadSession(plugin: Plugin)
 			newModel:SetAttribute(RoadMath.adjustAttributeName("Blue", axis), 0)
 			newModel:SetAttribute(RoadMath.adjustAttributeName("Red", axis), 0)
 		end
+
+		local size = if kind == "Straight"
+			then Vector3.new(width, 0, math.max(2 * width, RoadMath.MIN_LENGTH))
+			else Vector3.new(2 * width, 0, 2 * width)
 
 		-- Place the blue end nearest the camera, road extending away
 		local blueLocal = RoadMath.localEndpointFrame(kind, size, width, false, "Blue");

@@ -5,6 +5,7 @@ local PluginGuiTypes = require("./PluginGui/Types")
 
 export type RoadHelperSettings = PluginGuiTypes.PluginGuiSettings & {
 	AlignToWorld: boolean,
+	SelectedPreset: string,
 }
 
 local function loadSettings(plugin: Plugin): RoadHelperSettings
@@ -22,6 +23,7 @@ local function loadSettings(plugin: Plugin): RoadHelperSettings
 		HaveHelp = if raw.HaveHelp ~= nil then raw.HaveHelp else true,
 		DoneTutorial = if raw.DoneTutorial ~= nil then raw.DoneTutorial else false,
 		AlignToWorld = if raw.AlignToWorld ~= nil then raw.AlignToWorld else true,
+		SelectedPreset = if raw.SelectedPreset ~= nil then raw.SelectedPreset else "",
 	}
 end
 
@@ -35,6 +37,7 @@ local function saveSettings(plugin: Plugin, settings: RoadHelperSettings)
 		HaveHelp = settings.HaveHelp,
 		DoneTutorial = settings.DoneTutorial,
 		AlignToWorld = settings.AlignToWorld,
+		SelectedPreset = settings.SelectedPreset,
 	})
 end
 

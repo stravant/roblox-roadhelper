@@ -13,6 +13,7 @@ local OperationButton = require("./PluginGui/OperationButton")
 local PluginGuiTypes = require("./PluginGui/Types")
 
 local createRoadSession = require("./createRoadSession")
+local Presets = require("./Presets")
 local RoadMath = require("./RoadMath")
 local Settings = require("./Settings")
 
@@ -210,6 +211,91 @@ local function AddPanel(props: {
 	})
 end
 
+local function PresetTile(props: {
+	Preset: Presets.Preset,
+	Selected: boolean,
+	LayoutOrder: number?,
+	OnClick: () -> (),
+})
+	local preset = props.Preset
+	return e("ImageButton", {
+		BackgroundColor3 = preset.PlaceholderColor,
+		BorderSizePixel = 0,
+		Image = preset.Image,
+		ScaleType = Enum.ScaleType.Crop,
+		AutoButtonColor = true,
+		LayoutOrder = props.LayoutOrder,
+		[React.Event.MouseButton1Click] = props.OnClick,
+	}, {
+		Corner = e("UICorner", {
+			CornerRadius = UDim.new(0, 6),
+		}),
+		Stroke = if props.Selected
+			then e("UIStroke", {
+				Color = Colors.ACTION_BLUE,
+				Thickness = 2,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			})
+			else nil,
+		NameLabel = e("TextLabel", {
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.new(0.5, 0, 1, -4),
+			Size = UDim2.new(1, -8, 0, 14),
+			BackgroundTransparency = 1,
+			Text = preset.Name,
+			TextColor3 = Colors.WHITE,
+			TextStrokeColor3 = Colors.BLACK,
+			TextStrokeTransparency = 0.2,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Font = Enum.Font.SourceSansBold,
+			TextSize = 14,
+		}),
+	})
+end
+
+local function PresetsPanel(props: {
+	SelectionState: createRoadSession.SelectionState,
+	CurrentSettings: Settings.RoadHelperSettings,
+	UpdatedSettings: () -> (),
+	LayoutOrder: number?,
+})
+	-- Shown alongside the Add section: presets only affect the add buttons
+	if props.SelectionState.Kind ~= "none" then
+		return nil :: any
+	end
+	local tiles: { [string]: any } = {
+		Layout = e("UIGridLayout", {
+			CellSize = UDim2.new(0.5, -3, 0, 54),
+			CellPadding = UDim2.fromOffset(6, 6),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	}
+	for index, preset in Presets.List do
+		local selected = props.CurrentSettings.SelectedPreset == preset.Key
+		tiles[preset.Key] = e(PresetTile, {
+			Preset = preset,
+			Selected = selected,
+			LayoutOrder = index,
+			OnClick = function()
+				-- Clicking the selected tile deselects it, going back to
+				-- inheriting appearance from nearby roads
+				props.CurrentSettings.SelectedPreset = if selected then "" else preset.Key
+				props.UpdatedSettings()
+			end,
+		})
+	end
+	return e(SubPanel, {
+		Title = "Presets",
+		LayoutOrder = props.LayoutOrder,
+	}, {
+		Grid = e("Frame", {
+			Size = UDim2.fromScale(1, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+		}, tiles),
+	})
+end
+
 local function CloseButton(props: {
 	HandleAction: (string) -> (),
 	LayoutOrder: number?,
@@ -275,6 +361,12 @@ local function RoadHelperGui(props: {
 			CurrentSettings = props.CurrentSettings,
 			UpdatedSettings = props.UpdatedSettings,
 			AddSegment = props.AddSegment,
+			LayoutOrder = nextOrder(),
+		}),
+		PresetsPanel = e(PresetsPanel, {
+			SelectionState = props.SelectionState,
+			CurrentSettings = props.CurrentSettings,
+			UpdatedSettings = props.UpdatedSettings,
 			LayoutOrder = nextOrder(),
 		}),
 		CloseButton = e(CloseButton, {
