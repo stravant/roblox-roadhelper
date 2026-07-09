@@ -43,7 +43,8 @@ local List: { Preset } = {
 		Name = "Dirt Road",
 		Image = "",
 		PlaceholderColor = Color3.fromRGB(110, 84, 60),
-		-- Single narrow lane, no sidewalks, markings blended into the dirt
+		-- Single unmarked lane of dirt, no sidewalks; the blend skirt (off by
+		-- default) is dirt as well rather than the usual grass
 		Attributes = {
 			LaneWidth = 24,
 			LaneCount = 1,
@@ -53,8 +54,40 @@ local List: { Preset } = {
 			RoadMaterial = Enum.Material.Ground,
 			RoadColor = Color3.fromRGB(110, 84, 60),
 			SidewalkColor = Color3.fromRGB(110, 84, 60),
-			CenterlineColor = Color3.fromRGB(96, 72, 50),
-			LaneMarkingColor = Color3.fromRGB(96, 72, 50),
+			BlendMaterial = Enum.Material.Ground,
+			BlendColor = Color3.fromRGB(110, 84, 60),
+		},
+	},
+	{
+		Key = "Cobblestone",
+		Name = "Cobblestone Path",
+		Image = "",
+		PlaceholderColor = Color3.fromRGB(132, 123, 111),
+		Attributes = {
+			LaneWidth = 16,
+			LaneCount = 1,
+			SidewalkWidth = 0,
+			TextureLaneMarkings = false,
+			HaveLaneMarkings = false,
+			RoadMaterial = Enum.Material.Cobblestone,
+			RoadColor = Color3.fromRGB(132, 123, 111),
+			SidewalkColor = Color3.fromRGB(132, 123, 111),
+		},
+	},
+	{
+		Key = "Pebble",
+		Name = "Pebble Path",
+		Image = "",
+		PlaceholderColor = Color3.fromRGB(140, 140, 136),
+		Attributes = {
+			LaneWidth = 16,
+			LaneCount = 1,
+			SidewalkWidth = 0,
+			TextureLaneMarkings = false,
+			HaveLaneMarkings = false,
+			RoadMaterial = Enum.Material.Pebble,
+			RoadColor = Color3.fromRGB(140, 140, 136),
+			SidewalkColor = Color3.fromRGB(140, 140, 136),
 		},
 	},
 	{
