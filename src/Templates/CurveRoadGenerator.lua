@@ -31,6 +31,8 @@ local defaultAttributes = {
 	BlendAngle = 30,
 	AdjustShowSnappingHelper = false,
 	TextureLaneMarkings = false,
+	HaveLaneMarkings = true,
+	RoadMaterial = Enum.Material.Concrete,
 	CenterlineColor = Color3.fromRGB(244, 205, 47),
 	LaneMarkingColor = Color3.fromRGB(163, 161, 165),
 	RoadColor = Color3.fromRGB(26, 42, 52),
@@ -124,6 +126,11 @@ local Generator: GeneratorModuleDefinition<typeof(defaultAttributes)> = {
 		local centerlineColor = attributes.CenterlineColor
 		local laneMarkingColor = attributes.LaneMarkingColor
 		local textureLaneMarkings = attributes.TextureLaneMarkings
+		local haveLaneMarkings = if attributes.HaveLaneMarkings ~= nil then attributes.HaveLaneMarkings else true
+		local roadMaterial = attributes.RoadMaterial or ROAD_MATERIAL
+		-- Material variants are per-material: the concrete road variant only
+		-- applies while the material is still concrete
+		local roadMaterialVariant = if roadMaterial == ROAD_MATERIAL then ROAD_MATERIAL_VARIANT else ""
 
 		local dirStart = math.rad(attributes.AdjustBlueDir or 0)
 		local dirEnd = math.rad(attributes.AdjustRedDir or 0)
@@ -478,8 +485,8 @@ local Generator: GeneratorModuleDefinition<typeof(defaultAttributes)> = {
 						nextSlice * Vector3.new(rightEdge, hRoadTop, 0),
 						nextSlice * Vector3.new(leftEdge, hRoadTop, 0),
 						roadColor,
-						ROAD_MATERIAL,
-						ROAD_MATERIAL_VARIANT,
+						roadMaterial,
+						roadMaterialVariant,
 						ROAD_THICKNESS
 					)
 				end
@@ -519,7 +526,10 @@ local Generator: GeneratorModuleDefinition<typeof(defaultAttributes)> = {
 			centerlineArcLength[i + 1] = centerlineArcLength[i] + (centreB - centreA).Magnitude + 0.05
 		end
 
-		for _, marking in laneMarkings do
+		-- HaveLaneMarkings = false skips painting entirely (the markings
+		-- still shape the asphalt strip boundaries above)
+		local drawnMarkings = if haveLaneMarkings then laneMarkings else {}
+		for _, marking in drawnMarkings do
 			local color = marking.color
 			local lat = marking.lat
 			local isDotted = marking.isDotted
