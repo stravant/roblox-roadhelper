@@ -154,7 +154,9 @@ function EndpointRotateHandles:render(hoveredHandleId)
 		children[self._draggingHandleId] = Roact.createElement(RotateHandleView, {
 			HandleCFrame = handleProps.HandleCFrame,
 			Color = handleProps.Color,
-			StartAngle = snapStartAngle - self._draggingLastGoodDelta,
+			-- The view sweeps from StartAngle to EndAngle; our delta is the raw
+			-- right-handed angle (Redupe stored it negated, hence + not -)
+			StartAngle = snapStartAngle + self._draggingLastGoodDelta,
 			EndAngle = snapStartAngle,
 			Scale = handleProps.Scale,
 			Hovered = false,
