@@ -92,7 +92,7 @@ local List: { Preset } = {
 	},
 	{
 		Key = "RealisticSidewalk",
-		Name = "Realistic, Sidewalk",
+		Name = "Real, Sidewalk",
 		Image = "",
 		PlaceholderColor = Color3.fromRGB(20, 20, 22),
 		-- Black asphalt, white edge/divider lines, saturated yellow center
@@ -111,7 +111,7 @@ local List: { Preset } = {
 	},
 	{
 		Key = "RealisticOpen",
-		Name = "Realistic, no Sidewalk",
+		Name = "Real, no Sidewalk",
 		Image = "",
 		PlaceholderColor = Color3.fromRGB(28, 28, 30),
 		Attributes = {
