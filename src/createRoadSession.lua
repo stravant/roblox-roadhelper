@@ -876,10 +876,11 @@ local function createRoadSession(plugin: Plugin)
 			then Vector3.new(width, 0, math.max(2 * width, RoadMath.MIN_LENGTH))
 			else Vector3.new(2 * width, 0, 2 * width)
 
-		-- Place the blue end nearest the camera, road extending away
-		local blueLocal = RoadMath.localEndpointFrame(kind, size, width, false, "Blue");
+		-- Center the segment on the point the camera is looking at (the pivot
+		-- is the bounding box center), rather than having it extend away out
+		-- of view
 		(newModel :: any).Size = size
-		newModel:PivotTo(rotation + (target - rotation:VectorToWorldSpace(blueLocal.Position)))
+		newModel:PivotTo(rotation + target)
 		newModel.Parent = if template then template.Model.Parent else workspace
 
 		selectedRef = { Model = newModel, Id = "Red" }
