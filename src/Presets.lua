@@ -102,8 +102,9 @@ local List: { Preset } = {
 			SidewalkWidth = 8,
 			TextureLaneMarkings = true,
 			HaveLaneMarkings = true,
-			RoadMaterial = Enum.Material.Concrete,
-			RoadColor = Color3.fromRGB(20, 20, 22),
+			-- Asphalt renders fairly light, so it needs a pure black tint
+			RoadMaterial = Enum.Material.Asphalt,
+			RoadColor = Color3.fromRGB(0, 0, 0),
 			SidewalkColor = Color3.fromRGB(163, 162, 165),
 			CenterlineColor = Color3.fromRGB(255, 191, 0),
 			LaneMarkingColor = Color3.fromRGB(235, 235, 235),
@@ -120,8 +121,9 @@ local List: { Preset } = {
 			SidewalkWidth = 0,
 			TextureLaneMarkings = true,
 			HaveLaneMarkings = true,
-			RoadMaterial = Enum.Material.Concrete,
-			RoadColor = Color3.fromRGB(20, 20, 22),
+			-- Asphalt renders fairly light, so it needs a pure black tint
+			RoadMaterial = Enum.Material.Asphalt,
+			RoadColor = Color3.fromRGB(0, 0, 0),
 			SidewalkColor = Color3.fromRGB(163, 162, 165),
 			CenterlineColor = Color3.fromRGB(255, 191, 0),
 			LaneMarkingColor = Color3.fromRGB(235, 235, 235),
