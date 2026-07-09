@@ -879,7 +879,7 @@ local function createRoadSession(plugin: Plugin)
 		-- Center the segment on the point the camera is looking at (the pivot
 		-- is the bounding box center), rather than having it extend away out
 		-- of view
-		(newModel :: any).Size = size
+		;(newModel :: any).Size = size
 		newModel:PivotTo(rotation + target)
 		newModel.Parent = if template then template.Model.Parent else workspace
 
