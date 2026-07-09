@@ -245,11 +245,17 @@ local function PresetTile(props: {
 			BackgroundTransparency = 1,
 			Text = preset.Name,
 			TextColor3 = Colors.WHITE,
-			TextStrokeColor3 = Colors.BLACK,
-			TextStrokeTransparency = 0.2,
 			TextWrapped = true,
 			Font = Enum.Font.SourceSansBold,
 			TextSize = 14,
+		}, {
+			-- A UIStroke outlines the glyphs thicker and more opaque than
+			-- the built-in TextStroke can
+			Outline = e("UIStroke", {
+				Color = Colors.BLACK,
+				Thickness = 2,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
+			}),
 		}),
 	})
 end
