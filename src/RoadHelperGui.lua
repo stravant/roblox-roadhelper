@@ -9,6 +9,7 @@ local SubPanel = require("./PluginGui/SubPanel")
 local NumberInput = require("./PluginGui/NumberInput")
 local Checkbox = require("./PluginGui/Checkbox")
 local ChipForToggle = require("./PluginGui/ChipForToggle")
+local HelpGui = require("./PluginGui/HelpGui")
 local PluginGui = require("./PluginGui/PluginGui")
 local OperationButton = require("./PluginGui/OperationButton")
 local PluginGuiTypes = require("./PluginGui/Types")
@@ -87,41 +88,61 @@ local function ParametersPanel(props: {
 		Padding = UDim.new(0, 6),
 		LayoutOrder = props.LayoutOrder,
 	}, {
-		DirectionInput = e(NumberInput, {
-			Label = "Direction",
-			Value = state.Dir,
-			Unit = "°",
+		DirectionInput = e(HelpGui.WithHelpIcon, {
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "Horizontal angle of the road face at this end, pivoting about the endpoint. A joined neighbor's end follows so the joint stays sealed.",
+			}),
 			LayoutOrder = nextOrder(),
-			ValueEntered = function(value: number): number?
-				props.SetAdjustValue("Dir", value)
-				return value
-			end,
+			Subject = e(NumberInput, {
+				Label = "Direction",
+				Value = state.Dir,
+				Unit = "°",
+				ValueEntered = function(value: number): number?
+					props.SetAdjustValue("Dir", value)
+					return value
+				end,
+			}),
 		}),
-		GradeInput = e(NumberInput, {
-			Label = "Grade",
-			Value = state.Grade,
-			Unit = "°",
+		GradeInput = e(HelpGui.WithHelpIcon, {
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "Vertical slope of the road at this end. Positive slopes upward heading out of the segment.",
+			}),
 			LayoutOrder = nextOrder(),
-			ValueEntered = function(value: number): number?
-				props.SetAdjustValue("Grade", value)
-				return value
-			end,
+			Subject = e(NumberInput, {
+				Label = "Grade",
+				Value = state.Grade,
+				Unit = "°",
+				ValueEntered = function(value: number): number?
+					props.SetAdjustValue("Grade", value)
+					return value
+				end,
+			}),
 		}),
-		BankInput = e(NumberInput, {
-			Label = "Bank",
-			Value = state.Bank,
-			Unit = "°",
+		BankInput = e(HelpGui.WithHelpIcon, {
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "Roll of the road surface at this end, for banking corners. The surface twists smoothly between the two ends' bank angles.",
+			}),
 			LayoutOrder = nextOrder(),
-			ValueEntered = function(value: number): number?
-				props.SetAdjustValue("Bank", value)
-				return value
-			end,
+			Subject = e(NumberInput, {
+				Label = "Bank",
+				Value = state.Bank,
+				Unit = "°",
+				ValueEntered = function(value: number): number?
+					props.SetAdjustValue("Bank", value)
+					return value
+				end,
+			}),
 		}),
-		HaveSkirt = e(Checkbox, {
-			Label = "Have skirt",
-			Checked = state.Blend,
+		HaveSkirt = e(HelpGui.WithHelpIcon, {
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "Adds a sloped fill skirt along the road edges that ramps down into the surrounding terrain, hiding the hard seam.",
+			}),
 			LayoutOrder = nextOrder(),
-			Changed = props.SetBlend,
+			Subject = e(Checkbox, {
+				Label = "Have skirt",
+				Checked = state.Blend,
+				Changed = props.SetBlend,
+			}),
 		}),
 	})
 end
@@ -166,21 +187,31 @@ local function DetailPanel(props: {
 		Padding = UDim.new(0, 6),
 		LayoutOrder = props.LayoutOrder,
 	}, {
-		TexturedMarkings = e(Checkbox, {
-			Label = "Textured lane markings",
-			Checked = state.TextureLaneMarkings,
+		TexturedMarkings = e(HelpGui.WithHelpIcon, {
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "Draw lane markings as textures, with properly dashed divider lines. Untextured markings are plain solid strips.",
+			}),
 			LayoutOrder = 1,
-			Changed = function(checked: boolean)
-				props.SetSegmentAttribute("TextureLaneMarkings", checked)
-			end,
+			Subject = e(Checkbox, {
+				Label = "Textured lane markings",
+				Checked = state.TextureLaneMarkings,
+				Changed = function(checked: boolean)
+					props.SetSegmentAttribute("TextureLaneMarkings", checked)
+				end,
+			}),
 		}),
-		Chips = e("Frame", {
-			Size = UDim2.new(1, 0, 0, 0),
-			BorderSizePixel = 0,
-			BackgroundColor3 = Colors.ACTION_BLUE,
-			AutomaticSize = Enum.AutomaticSize.Y,
+		Chips = e(HelpGui.WithHelpIcon, {
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "How finely the road surface is tessellated (how many degrees of turn or twist each row of parts may span). Higher detail looks smoother but uses more parts.",
+			}),
 			LayoutOrder = 2,
-		}, chips),
+			Subject = e("Frame", {
+				Size = UDim2.new(1, 0, 0, 0),
+				BorderSizePixel = 0,
+				BackgroundColor3 = Colors.ACTION_BLUE,
+				AutomaticSize = Enum.AutomaticSize.Y,
+			}, chips),
+		}),
 	})
 end
 
@@ -198,37 +229,52 @@ local function SizingPanel(props: {
 		Padding = UDim.new(0, 6),
 		LayoutOrder = props.LayoutOrder,
 	}, {
-		LaneCountInput = e(NumberInput, {
-			Label = "Lanes",
-			Value = state.LaneCount,
+		LaneCountInput = e(HelpGui.WithHelpIcon, {
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "Number of lanes. An odd count adds a shared center turn lane. The bounds adjust so both endpoints stay in place.",
+			}),
 			LayoutOrder = 1,
-			ValueEntered = function(value: number): number?
-				local count = math.max(math.round(value), 1)
-				props.SetSizing("LaneCount", count)
-				return count
-			end,
+			Subject = e(NumberInput, {
+				Label = "Lanes",
+				Value = state.LaneCount,
+				ValueEntered = function(value: number): number?
+					local count = math.max(math.round(value), 1)
+					props.SetSizing("LaneCount", count)
+					return count
+				end,
+			}),
 		}),
-		LaneWidthInput = e(NumberInput, {
-			Label = "Lane Width",
-			Value = state.LaneWidth,
+		LaneWidthInput = e(HelpGui.WithHelpIcon, {
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "Width of each lane in studs. The bounds adjust so both endpoints stay in place.",
+			}),
 			LayoutOrder = 2,
-			ValueEntered = function(value: number): number?
-				if value <= 0 then
-					return nil
-				end
-				props.SetSizing("LaneWidth", value)
-				return value
-			end,
+			Subject = e(NumberInput, {
+				Label = "Lane Width",
+				Value = state.LaneWidth,
+				ValueEntered = function(value: number): number?
+					if value <= 0 then
+						return nil
+					end
+					props.SetSizing("LaneWidth", value)
+					return value
+				end,
+			}),
 		}),
-		SidewalkWidthInput = e(NumberInput, {
-			Label = "Sidewalk",
-			Value = state.SidewalkWidth,
+		SidewalkWidthInput = e(HelpGui.WithHelpIcon, {
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "Width of the raised sidewalk on each side, in studs. Zero removes the sidewalks entirely.",
+			}),
 			LayoutOrder = 3,
-			ValueEntered = function(value: number): number?
-				local width = math.max(value, 0)
-				props.SetSizing("SidewalkWidth", width)
-				return width
-			end,
+			Subject = e(NumberInput, {
+				Label = "Sidewalk Width",
+				Value = state.SidewalkWidth,
+				ValueEntered = function(value: number): number?
+					local width = math.max(value, 0)
+					props.SetSizing("SidewalkWidth", width)
+					return width
+				end,
+			}),
 		}),
 	})
 end
@@ -263,20 +309,29 @@ local function AddPanel(props: {
 			TextSize = 16,
 			LayoutOrder = nextOrder(),
 		}),
-		AlignToWorld = e(Checkbox, {
-			Label = "Align to world",
-			Checked = props.CurrentSettings.AlignToWorld,
+		AlignToWorld = e(HelpGui.WithHelpIcon, {
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "Snap added segments to the nearest world axis instead of following the camera's heading.",
+			}),
 			LayoutOrder = nextOrder(),
-			Changed = function(checked: boolean)
-				props.CurrentSettings.AlignToWorld = checked
-				props.UpdatedSettings()
-			end,
+			Subject = e(Checkbox, {
+				Label = "Align to world",
+				Checked = props.CurrentSettings.AlignToWorld,
+				Changed = function(checked: boolean)
+					props.CurrentSettings.AlignToWorld = checked
+					props.UpdatedSettings()
+				end,
+			}),
 		}),
-		Buttons = e("Frame", {
+		Buttons = e(HelpGui.WithHelpIcon, {
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "Add a free-standing road segment in front of the camera, styled by the selected preset. Extend it by dragging the cone handles off its ends.",
+			}),
+			LayoutOrder = nextOrder(),
+			Subject = e("Frame", {
 			Size = UDim2.new(1, 0, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
 			BackgroundTransparency = 1,
-			LayoutOrder = nextOrder(),
 		}, {
 			ListLayout = e("UIListLayout", {
 				SortOrder = Enum.SortOrder.LayoutOrder,
@@ -314,6 +369,7 @@ local function AddPanel(props: {
 						props.AddSegment("Curve")
 					end,
 				}),
+			}),
 			}),
 		}),
 	})
@@ -403,11 +459,16 @@ local function PresetsPanel(props: {
 		Title = "Preset",
 		LayoutOrder = props.LayoutOrder,
 	}, {
-		Grid = e("Frame", {
-			Size = UDim2.fromScale(1, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			BackgroundTransparency = 1,
-		}, tiles),
+		Grid = e(HelpGui.WithHelpIcon, {
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "The look applied to segments added with the buttons above. Click the selected tile to deselect it and instead match the appearance of nearby roads.",
+			}),
+			Subject = e("Frame", {
+				Size = UDim2.fromScale(1, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+			}, tiles),
+		}),
 	})
 end
 
