@@ -101,7 +101,7 @@ local List: { Preset } = {
 		Key = "Cobblestone",
 		Name = "Cobblestone Path",
 		Image = "rbxassetid://122561563144022",
-		PlaceholderColor = Color3.fromRGB(132, 123, 111),
+		PlaceholderColor = Color3.fromRGB(59, 67, 74),
 		Attributes = {
 			LaneWidth = 16,
 			LaneCount = 1,
@@ -109,8 +109,8 @@ local List: { Preset } = {
 			TextureLaneMarkings = false,
 			HaveLaneMarkings = false,
 			RoadMaterial = Enum.Material.Cobblestone,
-			RoadColor = Color3.fromRGB(132, 123, 111),
-			SidewalkColor = Color3.fromRGB(132, 123, 111),
+			RoadColor = Color3.fromRGB(59, 67, 74),
+			SidewalkColor = Color3.fromRGB(59, 67, 74),
 		},
 	},
 	{
