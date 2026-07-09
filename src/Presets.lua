@@ -14,6 +14,9 @@ export type Preset = {
 	Key: string,
 	Name: string,
 	Image: string,
+	-- Multiplied over the tile image (ImageColor3), for retinting a
+	-- screenshot without retaking it
+	ImageTint: Color3?,
 	PlaceholderColor: Color3,
 	Attributes: { [string]: any },
 }
@@ -101,6 +104,7 @@ local List: { Preset } = {
 		Key = "Cobblestone",
 		Name = "Cobblestone Path",
 		Image = "rbxassetid://122561563144022",
+		ImageTint = Color3.fromRGB(140, 160, 200),
 		PlaceholderColor = Color3.fromRGB(59, 67, 74),
 		Attributes = {
 			LaneWidth = 16,

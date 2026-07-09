@@ -381,6 +381,7 @@ local function PresetTile(props: {
 		BackgroundColor3 = preset.PlaceholderColor,
 		BorderSizePixel = 0,
 		Image = preset.Image,
+		ImageColor3 = preset.ImageTint or Color3.new(1, 1, 1),
 		ScaleType = Enum.ScaleType.Crop,
 		AutoButtonColor = true,
 		LayoutOrder = props.LayoutOrder,
