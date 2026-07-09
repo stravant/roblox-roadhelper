@@ -42,7 +42,7 @@ local List: { Preset } = {
 		Key = "Dirt",
 		Name = "Dirt Road",
 		Image = "rbxassetid://108785564035719",
-		PlaceholderColor = Color3.fromRGB(110, 84, 60),
+		PlaceholderColor = Color3.fromRGB(104, 60, 30),
 		-- Single unmarked lane of dirt, no sidewalks; the blend skirt (off by
 		-- default) is dirt as well rather than the usual grass
 		Attributes = {
@@ -52,10 +52,10 @@ local List: { Preset } = {
 			TextureLaneMarkings = false,
 			HaveLaneMarkings = false,
 			RoadMaterial = Enum.Material.Ground,
-			RoadColor = Color3.fromRGB(110, 84, 60),
-			SidewalkColor = Color3.fromRGB(110, 84, 60),
+			RoadColor = Color3.fromRGB(104, 60, 30),
+			SidewalkColor = Color3.fromRGB(104, 60, 30),
 			BlendMaterial = Enum.Material.Ground,
-			BlendColor = Color3.fromRGB(110, 84, 60),
+			BlendColor = Color3.fromRGB(104, 60, 30),
 		},
 	},
 	{
