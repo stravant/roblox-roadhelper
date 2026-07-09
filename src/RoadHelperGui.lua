@@ -323,15 +323,11 @@ local function AddPanel(props: {
 				end,
 			}),
 		}),
-		Buttons = e(HelpGui.WithHelpIcon, {
-			Help = e(HelpGui.BasicTooltip, {
-				HelpRichText = "Add a free-standing road segment in front of the camera, styled by the selected preset. Extend it by dragging the cone handles off its ends.",
-			}),
-			LayoutOrder = nextOrder(),
-			Subject = e("Frame", {
+		Buttons = e("Frame", {
 			Size = UDim2.new(1, 0, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
 			BackgroundTransparency = 1,
+			LayoutOrder = nextOrder(),
 		}, {
 			ListLayout = e("UIListLayout", {
 				SortOrder = Enum.SortOrder.LayoutOrder,
@@ -369,7 +365,6 @@ local function AddPanel(props: {
 						props.AddSegment("Curve")
 					end,
 				}),
-			}),
 			}),
 		}),
 	})
@@ -459,16 +454,11 @@ local function PresetsPanel(props: {
 		Title = "Preset",
 		LayoutOrder = props.LayoutOrder,
 	}, {
-		Grid = e(HelpGui.WithHelpIcon, {
-			Help = e(HelpGui.BasicTooltip, {
-				HelpRichText = "The look applied to segments added with the buttons above. Click the selected tile to deselect it and instead match the appearance of nearby roads.",
-			}),
-			Subject = e("Frame", {
-				Size = UDim2.fromScale(1, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
-				BackgroundTransparency = 1,
-			}, tiles),
-		}),
+		Grid = e("Frame", {
+			Size = UDim2.fromScale(1, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+		}, tiles),
 	})
 end
 
