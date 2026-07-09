@@ -22,7 +22,7 @@ local List: { Preset } = {
 	{
 		Key = "Classic",
 		Name = "Classic Roblox",
-		Image = "",
+		Image = "rbxassetid://112075426411810",
 		PlaceholderColor = Color3.fromRGB(26, 42, 52),
 		-- The ProceduralModel generator defaults
 		Attributes = {
@@ -41,7 +41,7 @@ local List: { Preset } = {
 	{
 		Key = "Dirt",
 		Name = "Dirt Road",
-		Image = "",
+		Image = "rbxassetid://130612574712808",
 		PlaceholderColor = Color3.fromRGB(110, 84, 60),
 		-- Single unmarked lane of dirt, no sidewalks; the blend skirt (off by
 		-- default) is dirt as well rather than the usual grass
@@ -61,7 +61,7 @@ local List: { Preset } = {
 	{
 		Key = "Cobblestone",
 		Name = "Cobblestone Path",
-		Image = "",
+		Image = "rbxassetid://134982405334304",
 		PlaceholderColor = Color3.fromRGB(132, 123, 111),
 		Attributes = {
 			LaneWidth = 16,
@@ -77,7 +77,7 @@ local List: { Preset } = {
 	{
 		Key = "Pebble",
 		Name = "Pebble Path",
-		Image = "",
+		Image = "rbxassetid://70400101963064",
 		PlaceholderColor = Color3.fromRGB(140, 140, 136),
 		Attributes = {
 			LaneWidth = 16,
@@ -93,7 +93,7 @@ local List: { Preset } = {
 	{
 		Key = "RealisticSidewalk",
 		Name = "Real, Sidewalk",
-		Image = "",
+		Image = "rbxassetid://85364096737467",
 		PlaceholderColor = Color3.fromRGB(20, 20, 22),
 		-- Black asphalt, white edge/divider lines, saturated yellow center
 		Attributes = {
@@ -112,7 +112,7 @@ local List: { Preset } = {
 	{
 		Key = "RealisticOpen",
 		Name = "Real, no Sidewalk",
-		Image = "",
+		Image = "rbxassetid://140371476121148",
 		PlaceholderColor = Color3.fromRGB(28, 28, 30),
 		Attributes = {
 			LaneWidth = 24,
