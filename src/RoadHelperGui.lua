@@ -286,7 +286,9 @@ local function LaneMarkingsPanel(props: {
 	}, {
 		Chips = e(HelpGui.WithHelpIcon, {
 			Help = e(HelpGui.BasicTooltip, {
-				HelpRichText = "None hides the lane markings entirely. Parts draws them as solid colored strips. Textured paints them with textures, including properly dashed divider lines, at a small perf cost.",
+				HelpRichText = "\u{2022} <b>None</b> hides the lane markings, leaving clear pavement to paint custom markings on."
+					.. "\n\u{2022} <b>Parts</b> draws them as solid colored strips."
+					.. "\n\u{2022} <b>Textured</b> paints them with textures, including properly dashed divider lines, at a small perf cost.",
 			}),
 			Subject = e("Frame", {
 				Size = UDim2.new(1, 0, 0, 0),
