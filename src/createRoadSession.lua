@@ -162,6 +162,14 @@ local GEOMETRY_ATTRIBUTES = {
 	AdjustRedDir = true,
 	AdjustRedGrade = true,
 	AdjustRedBank = true,
+	-- Intersection lane layout (translated onto LaneCount/LaneWidth when
+	-- extending an intersection end, not copied directly)
+	LaneCountX = true,
+	LaneCountZ = true,
+	LaneWidthX = true,
+	LaneWidthZ = true,
+	IntersectionAngle = true,
+	ThroughRoad = true,
 }
 
 local function createRoadSession(plugin: Plugin)
@@ -208,6 +216,9 @@ local function createRoadSession(plugin: Plugin)
 			if segment and not seen[segment.Model] then
 				seen[segment.Model] = true
 				if kind and segment.Kind ~= kind then
+					continue
+				end
+				if not table.find(RoadMath.endpointIds(segment), id) then
 					continue
 				end
 				local endpoint = RoadMath.getEndpoint(segment, id)
@@ -382,7 +393,7 @@ local function createRoadSession(plugin: Plugin)
 				continue
 			end
 			seen[segment.Model] = true
-			for _, id in { "Blue" :: RoadMath.EndpointId, "Red" :: RoadMath.EndpointId } do
+			for _, id in RoadMath.endpointIds(segment) do
 				if excludeEndpoint and excludeEndpoint.Model == segment.Model and excludeEndpoint.Id == id then
 					continue
 				end
@@ -670,7 +681,7 @@ local function createRoadSession(plugin: Plugin)
 	-- extended. Returns the new model and its far (still open) endpoint id.
 	local function createJoinedSegment(openEnd: RoadMath.Endpoint, turn: RoadMath.TurnDirection): (Model?, RoadMath.EndpointId?)
 		local sourceModel = openEnd.Segment.Model
-		local width = openEnd.Segment.Width
+		local width = RoadMath.endpointWidth(openEnd)
 		local kind, joinId, pivot, size = RoadMath.placeNewSegment(openEnd, turn, width)
 
 		local template = if openEnd.Segment.Kind == kind
@@ -700,6 +711,13 @@ local function createRoadSession(plugin: Plugin)
 			if not GEOMETRY_ATTRIBUTES[name] then
 				newModel:SetAttribute(name, value)
 			end
+		end
+		if openEnd.Segment.Kind == "Intersection" then
+			-- Translate the extended end's lane layout onto the road's
+			-- lane attributes
+			local axis = if openEnd.Id == "XPlus" or openEnd.Id == "XMinus" then "X" else "Z"
+			newModel:SetAttribute("LaneCount", sourceModel:GetAttribute("LaneCount" .. axis) or 2)
+			newModel:SetAttribute("LaneWidth", sourceModel:GetAttribute("LaneWidth" .. axis) or 24)
 		end
 		newModel:SetAttribute("Flip", false)
 		for _, axis in ADJUST_AXES do
@@ -822,7 +840,7 @@ local function createRoadSession(plugin: Plugin)
 		local width = if presetAttributes
 			then presetAttributes.LaneCount * presetAttributes.LaneWidth + 2 * presetAttributes.SidewalkWidth
 			elseif template then template.Width
-			elseif selected then selected.Segment.Width
+			elseif selected then RoadMath.endpointWidth(selected)
 			else 64
 
 		local look = camera.CFrame.LookVector * Vector3.new(1, 0, 1)
@@ -864,7 +882,12 @@ local function createRoadSession(plugin: Plugin)
 					newModel:SetAttribute(name, value)
 				end
 			end
-			width = selected.Segment.Width
+			if selected.Segment.Kind == "Intersection" then
+				local axis = if selected.Id == "XPlus" or selected.Id == "XMinus" then "X" else "Z"
+				newModel:SetAttribute("LaneCount", selected.Segment.Model:GetAttribute("LaneCount" .. axis) or 2)
+				newModel:SetAttribute("LaneWidth", selected.Segment.Model:GetAttribute("LaneWidth" .. axis) or 24)
+			end
+			width = RoadMath.endpointWidth(selected)
 		end
 		newModel:SetAttribute("Flip", false)
 		for _, axis in ADJUST_AXES do
@@ -900,7 +923,11 @@ local function createRoadSession(plugin: Plugin)
 		EndpointMoveHandles.new(draggerContext, {
 			GetEndpointCFrame = function()
 				local endpoint = getSelectedEndpoint()
-				return if endpoint then endpoint.WorldCFrame else nil
+				-- Intersection ends can only be extended, not moved/rotated
+				if not endpoint or endpoint.Segment.Kind == "Intersection" then
+					return nil
+				end
+				return endpoint.WorldCFrame
 			end,
 			GetDragExclusions = function(): { Instance }
 				local exclusions: { Instance } = {}
@@ -921,7 +948,11 @@ local function createRoadSession(plugin: Plugin)
 		EndpointRotateHandles.new(draggerContext, {
 			GetEndpointCFrame = function()
 				local endpoint = getSelectedEndpoint()
-				return if endpoint then endpoint.WorldCFrame else nil
+				-- Intersection ends can only be extended, not moved/rotated
+				if not endpoint or endpoint.Segment.Kind == "Intersection" then
+					return nil
+				end
+				return endpoint.WorldCFrame
 			end,
 			StartRotate = startRotate,
 			ApplyRotate = applyRotate,

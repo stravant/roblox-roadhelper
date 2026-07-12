@@ -40,6 +40,14 @@ local ROADHELPER_CONFIG: PluginGuiTypes.PluginGuiConfig = {
 local function describeStatus(state: createRoadSession.SelectionState): string
 	if state.Kind == "none" then
 		return "Click the end of a road segment to select that endpoint."
+	elseif (state :: any).SegmentKind == "Intersection" then
+		if state.Kind == "open" then
+			return "<b>Intersection exit selected.</b>"
+				.. "\nDrag one of the cones to extend it with a new road segment."
+		else
+			return "<b>Connected intersection exit selected.</b>"
+				.. "\nSelect the joined road segment's end instead to edit the joint."
+		end
 	elseif state.Kind == "open" then
 		return "<b>Open endpoint selected.</b>"
 			.. "\nDrag the handles to move it, the rings to adjust its angles, or drag one of the cones to extend the road with a new segment."
@@ -79,7 +87,7 @@ local function ParametersPanel(props: {
 	LayoutOrder: number?,
 })
 	local state = props.SelectionState
-	if state.Kind == "none" then
+	if state.Kind == "none" or (state :: any).SegmentKind == "Intersection" then
 		return nil :: any
 	end
 	local nextOrder = createNextOrder()
@@ -159,7 +167,7 @@ local function DetailPanel(props: {
 	LayoutOrder: number?,
 })
 	local state = props.SelectionState
-	if state.Kind == "none" then
+	if state.Kind == "none" or (state :: any).SegmentKind == "Intersection" then
 		return nil :: any
 	end
 	local chips: { [string]: any } = {
@@ -221,7 +229,7 @@ local function SizingPanel(props: {
 	LayoutOrder: number?,
 })
 	local state = props.SelectionState
-	if state.Kind == "none" then
+	if state.Kind == "none" or (state :: any).SegmentKind == "Intersection" then
 		return nil :: any
 	end
 	return e(SubPanel, {

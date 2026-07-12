@@ -26,8 +26,9 @@
 
 local RoadMath = {}
 
-export type SegmentKind = "Straight" | "Curve"
-export type EndpointId = "Blue" | "Red"
+export type SegmentKind = "Straight" | "Curve" | "Intersection"
+-- Roads have a Blue and a Red end; intersections have one id per stub
+export type EndpointId = "Blue" | "Red" | "ZPlus" | "ZMinus" | "XPlus" | "XMinus"
 
 export type SegmentInfo = {
 	Model: Model, -- Actually a ProceduralModel
@@ -36,6 +37,11 @@ export type SegmentInfo = {
 	Size: Vector3,
 	Pivot: CFrame,
 	Flip: boolean,
+	-- Intersection-only fields: the X road's width, its angle from the Z
+	-- road (radians), and whether the -X stub exists
+	WidthX: number?,
+	Angle: number?,
+	ThroughRoad: boolean?,
 }
 
 export type Endpoint = {
@@ -64,6 +70,7 @@ RoadMath.JOINT_TOLERANCE = 1
 local GENERATOR_KINDS: { [string]: SegmentKind } = {
 	StraightRoadGenerator = "Straight",
 	CurveRoadGenerator = "Curve",
+	RoadIntersectionGenerator = "Intersection",
 }
 
 --------------------------------------------------------------------------------
@@ -94,9 +101,24 @@ function RoadMath.getSegmentInfo(instance: Instance): SegmentInfo?
 		return nil
 	end
 	local model = instance :: Model
+	local sidewalkWidth = getNumberAttribute(model, "SidewalkWidth", 8)
+	if kind == "Intersection" then
+		return {
+			Model = model,
+			Kind = kind,
+			Width = getNumberAttribute(model, "LaneCountZ", 2) * getNumberAttribute(model, "LaneWidthZ", 24)
+				+ 2 * sidewalkWidth,
+			WidthX = getNumberAttribute(model, "LaneCountX", 2) * getNumberAttribute(model, "LaneWidthX", 24)
+				+ 2 * sidewalkWidth,
+			Angle = math.rad(math.clamp(getNumberAttribute(model, "IntersectionAngle", 90), 25, 155)),
+			ThroughRoad = model:GetAttribute("ThroughRoad") ~= false,
+			Size = (model :: any).Size :: Vector3,
+			Pivot = model:GetPivot(),
+			Flip = false,
+		}
+	end
 	local laneWidth = getNumberAttribute(model, "LaneWidth", 24)
 	local laneCount = getNumberAttribute(model, "LaneCount", 2)
-	local sidewalkWidth = getNumberAttribute(model, "SidewalkWidth", 8)
 	return {
 		Model = model,
 		Kind = kind,
@@ -169,8 +191,31 @@ function RoadMath.localEndpointFrame(kind: SegmentKind, size: Vector3, width: nu
 	end
 end
 
+-- An intersection's ends sit at the box bottom: the Z road's ends centred on
+-- the ±Z faces, and the (possibly angled) X road's squared ends at halfX
+-- along its own direction
+local function intersectionEndpointFrame(segment: SegmentInfo, id: EndpointId): CFrame
+	local size = segment.Size
+	local halfY = size.Y / 2
+	if id == "ZPlus" then
+		return CFrame.lookAlong(Vector3.new(0, -halfY, size.Z / 2), Vector3.zAxis)
+	elseif id == "ZMinus" then
+		return CFrame.lookAlong(Vector3.new(0, -halfY, -size.Z / 2), -Vector3.zAxis)
+	end
+	local angle = segment.Angle or math.pi / 2
+	local uX = Vector3.new(math.sin(angle), 0, math.cos(angle))
+	local s = if id == "XPlus" then 1 else -1
+	local p = uX * (s * size.X / 2)
+	return CFrame.lookAlong(Vector3.new(p.X, -halfY, p.Z), uX * s)
+end
+
 function RoadMath.getEndpoint(segment: SegmentInfo, id: EndpointId): Endpoint
-	local localFrame = RoadMath.localEndpointFrame(segment.Kind, segment.Size, segment.Width, segment.Flip, id)
+	local localFrame
+	if segment.Kind == "Intersection" then
+		localFrame = intersectionEndpointFrame(segment, id)
+	else
+		localFrame = RoadMath.localEndpointFrame(segment.Kind, segment.Size, segment.Width, segment.Flip, id)
+	end
 	return {
 		Segment = segment,
 		Id = id,
@@ -180,6 +225,35 @@ end
 
 function RoadMath.getEndpoints(segment: SegmentInfo): (Endpoint, Endpoint)
 	return RoadMath.getEndpoint(segment, "Blue"), RoadMath.getEndpoint(segment, "Red")
+end
+
+-- The endpoint ids a segment has
+function RoadMath.endpointIds(segment: SegmentInfo): { EndpointId }
+	if segment.Kind == "Intersection" then
+		local ids: { EndpointId } = { "ZPlus", "ZMinus", "XPlus" }
+		if segment.ThroughRoad then
+			table.insert(ids, "XMinus")
+		end
+		return ids
+	end
+	return { "Blue", "Red" }
+end
+
+function RoadMath.allEndpoints(segment: SegmentInfo): { Endpoint }
+	local endpoints = {}
+	for _, id in RoadMath.endpointIds(segment) do
+		table.insert(endpoints, RoadMath.getEndpoint(segment, id))
+	end
+	return endpoints
+end
+
+-- The road width at an endpoint (an intersection's X road can be a
+-- different width than its Z road)
+function RoadMath.endpointWidth(endpoint: Endpoint): number
+	if endpoint.Id == "XPlus" or endpoint.Id == "XMinus" then
+		return endpoint.Segment.WidthX or endpoint.Segment.Width
+	end
+	return endpoint.Segment.Width
 end
 
 -- The outward direction of the end's *actual* (Adjust-angle rotated) face, in
@@ -209,7 +283,7 @@ function RoadMath.findJoint(endpoint: Endpoint, segments: { SegmentInfo }): Endp
 		if segment.Model == endpoint.Segment.Model then
 			continue
 		end
-		for _, id in { "Blue" :: EndpointId, "Red" :: EndpointId } do
+		for _, id in RoadMath.endpointIds(segment) do
 			local other = RoadMath.getEndpoint(segment, id)
 			local distance = (other.WorldCFrame.Position - position).Magnitude
 			-- Faces must roughly oppose to count as a joint

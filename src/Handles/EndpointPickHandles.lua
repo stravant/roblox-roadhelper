@@ -50,10 +50,18 @@ function EndpointPickHandles:hitTest(mouseRay, ignoreExtraThreshold)
 	if result then
 		local segment = RoadMath.segmentFromDescendant(result.Instance)
 		if segment then
-			local blue, red = RoadMath.getEndpoints(segment)
-			local blueDistance = (blue.WorldCFrame.Position - result.Position).Magnitude
-			local redDistance = (red.WorldCFrame.Position - result.Position).Magnitude
-			self._hoverEndpoint = if blueDistance <= redDistance then blue else red
+			-- Offer whichever of the segment's endpoints is nearest (roads
+			-- have two; intersections have one per stub)
+			local best: RoadMath.Endpoint? = nil
+			local bestDistance = math.huge
+			for _, endpoint in RoadMath.allEndpoints(segment) do
+				local distance = (endpoint.WorldCFrame.Position - result.Position).Magnitude
+				if distance < bestDistance then
+					bestDistance = distance
+					best = endpoint
+				end
+			end
+			self._hoverEndpoint = best
 			return HOVER_HANDLE_ID, result.Distance, false
 		end
 	end
@@ -82,7 +90,7 @@ function EndpointPickHandles:render(hoveredHandleId)
 			return Roact.createElement("Folder", {}, children)
 		end
 		local frame = hover.WorldCFrame
-		local width = hover.Segment.Width
+		local width = RoadMath.endpointWidth(hover)
 		local color = if hover.Id == "Blue" then BLUE else RED
 		local intoSegment = true
 		if partner then
@@ -90,7 +98,7 @@ function EndpointPickHandles:render(hoveredHandleId)
 			-- identical whichever side is hovered (a box is symmetric under
 			-- the 180 degree yaw between the two ends' frames).
 			color = PURPLE
-			width = math.max(width, partner.Segment.Width)
+			width = math.max(width, RoadMath.endpointWidth(partner))
 			frame = (frame - frame.Position)
 				+ (frame.Position + partner.WorldCFrame.Position) / 2
 			intoSegment = false

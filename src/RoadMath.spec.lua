@@ -414,6 +414,46 @@ return function(t: TestTypes.TestContext)
 		expectFuzzy(t, joinActual, -openActual)
 	end)
 
+	t.test("intersection endpoints: ids, frames, and widths", function()
+		local fake: any = { attrs = {} }
+		fake.GetAttribute = function(self, name)
+			return self.attrs[name]
+		end
+		local seg: RoadMath.SegmentInfo = {
+			Model = fake,
+			Kind = "Intersection",
+			Width = 64,
+			WidthX = 112,
+			Angle = math.rad(60),
+			ThroughRoad = true,
+			Size = Vector3.new(250, 0, 250),
+			Pivot = CFrame.new(10, 0, 20),
+			Flip = false,
+		}
+		t.expect(#RoadMath.endpointIds(seg)).toBe(4)
+		seg.ThroughRoad = false
+		t.expect(#RoadMath.endpointIds(seg)).toBe(3)
+		seg.ThroughRoad = true
+
+		local zPlus = RoadMath.getEndpoint(seg, "ZPlus")
+		expectFuzzy(t, zPlus.WorldCFrame.Position, Vector3.new(10, 0, 145))
+		expectFuzzy(t, zPlus.WorldCFrame.LookVector, Vector3.new(0, 0, 1))
+		t.expect(RoadMath.endpointWidth(zPlus)).toBe(64)
+
+		local uX = Vector3.new(math.sin(math.rad(60)), 0, math.cos(math.rad(60)))
+		local xPlus = RoadMath.getEndpoint(seg, "XPlus")
+		expectFuzzy(t, xPlus.WorldCFrame.Position, Vector3.new(10, 0, 20) + uX * 125)
+		expectFuzzy(t, xPlus.WorldCFrame.LookVector, uX)
+		t.expect(RoadMath.endpointWidth(xPlus)).toBe(112)
+
+		-- A road end placed against an intersection end joins to it
+		local roadPivot = CFrame.new(zPlus.WorldCFrame.Position + Vector3.new(0, 0, 100))
+		local road = makeSegment("Straight", Vector3.new(WIDTH, 0, 200), roadPivot)
+		local joint = RoadMath.findJoint(RoadMath.getEndpoint(road, "Blue"), { seg })
+		t.expect(joint ~= nil).toBe(true)
+		t.expect((joint :: any).Id).toBe("ZPlus")
+	end)
+
 	t.test("matchingAdjust: negates for same-color joins, copies for opposite", function()
 		local segA = makeSegment("Straight", Vector3.new(WIDTH, 0, 200), CFrame.identity)
 		local mockModel = {
