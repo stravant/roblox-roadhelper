@@ -454,6 +454,40 @@ return function(t: TestTypes.TestContext)
 		t.expect((joint :: any).Id).toBe("ZPlus")
 	end)
 
+	t.test("intersection exits: box-aligned placement with matching Dir", function()
+		local fake: any = { attrs = {} }
+		fake.GetAttribute = function(self, name)
+			return self.attrs[name]
+		end
+		local seg: RoadMath.SegmentInfo = {
+			Model = fake,
+			Kind = "Intersection",
+			Width = 64,
+			WidthX = 64,
+			Angle = math.rad(60),
+			ThroughRoad = true,
+			Size = Vector3.new(250, 0, 250),
+			Pivot = CFrame.identity,
+			Flip = false,
+		}
+		local xPlus = RoadMath.getEndpoint(seg, "XPlus")
+		-- Placement squares to the box +X axis at the exit position
+		local placement = RoadMath.placementFrame(xPlus)
+		expectFuzzy(t, placement.LookVector, Vector3.new(1, 0, 0))
+		expectFuzzy(t, placement.Position, xPlus.WorldCFrame.Position)
+		-- The joining end's Dir takes up the skew: at 60 degrees the exit is
+		-- 30 degrees toward +Z from the +X box axis
+		local matching = RoadMath.matchingAdjust(xPlus, "Blue")
+		t.expect(math.abs(matching.Dir - -30) < 0.01).toBe(true)
+		t.expect(matching.Grade).toBe(0)
+		-- placeNewSegment yields a box-aligned pivot (no 60 degree yaw)
+		local _, _, pivot = RoadMath.placeNewSegment(xPlus, "Straight", 64)
+		t.expect(math.abs(pivot.LookVector.Z) < 1e-5).toBe(true)
+		-- Z exits place with zero Dir
+		local zPlus = RoadMath.getEndpoint(seg, "ZPlus")
+		t.expect(RoadMath.matchingAdjust(zPlus, "Blue").Dir).toBe(0)
+	end)
+
 	t.test("matchingAdjust: negates for same-color joins, copies for opposite", function()
 		local segA = makeSegment("Straight", Vector3.new(WIDTH, 0, 200), CFrame.identity)
 		local mockModel = {

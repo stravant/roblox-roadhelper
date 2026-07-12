@@ -442,6 +442,20 @@ function RoadMath.adjustDeltaSign(selected: Endpoint, target: Endpoint, axis: Ad
 	return colorSign * facingSign * flipFactor
 end
 
+-- The frame new segments are placed against. Normally the endpoint's
+-- nominal frame, but an intersection's angled X exits square their outward
+-- direction to the intersection's own box axis: the new segment stays
+-- box-aligned with the intersection, and its joining end's Dir adjust takes
+-- up the skew instead (see matchingAdjust).
+function RoadMath.placementFrame(endpoint: Endpoint): CFrame
+	if endpoint.Segment.Kind == "Intersection" and (endpoint.Id == "XPlus" or endpoint.Id == "XMinus") then
+		local s = if endpoint.Id == "XPlus" then 1 else -1
+		local outward = endpoint.Segment.Pivot:VectorToWorldSpace(Vector3.new(s, 0, 0))
+		return CFrame.lookAlong(endpoint.WorldCFrame.Position, outward)
+	end
+	return endpoint.WorldCFrame
+end
+
 -- The Adjust values a newly added segment's joining end must have to mate
 -- flush with the given open end. The new model is placed aligned with the
 -- open end's nominal frame (not its Dir-rotated face), so the joining end
@@ -451,6 +465,15 @@ end
 -- and the new segment is unflipped, so its attribute is the effective yaw
 -- directly.
 function RoadMath.matchingAdjust(openEnd: Endpoint, newEndId: EndpointId): { Dir: number, Grade: number, Bank: number }
+	if openEnd.Segment.Kind == "Intersection" then
+		-- Flat exits: no grade/bank. Dir takes up the yaw between the
+		-- box-aligned placement frame and the actual exit direction (zero
+		-- for the Z exits, the skew for angled X exits).
+		local n = RoadMath.placementFrame(openEnd).LookVector
+		local d = openEnd.WorldCFrame.LookVector
+		local yaw = math.deg(math.atan2(n:Cross(d).Y, n:Dot(d)))
+		return { Dir = math.round(yaw * 100) / 100, Grade = 0, Bank = 0 }
+	end
 	local openColorSign = if openEnd.Id == "Red" then 1 else -1
 	local newColorSign = if newEndId == "Red" then 1 else -1
 	local k = -openColorSign * newColorSign
@@ -507,17 +530,18 @@ function RoadMath.placeNewSegment(
 	assert(size)
 
 	-- Yaw the new model so its joining end's nominal outward direction opposes
-	-- the open end's NOMINAL face direction: the new model stays world-aligned
-	-- the same way as the segment it extends, and any Dir rotation on the open
-	-- end's face is matched by a Dir on the joining end instead (see
-	-- matchingAdjust), keeping the joint flush.
-	local outward = openEnd.WorldCFrame.LookVector
+	-- the open end's PLACEMENT frame: the new model stays aligned the same way
+	-- as the segment it extends (box-aligned for an intersection's angled
+	-- exits), and any rotation of the actual face is matched by a Dir on the
+	-- joining end instead (see matchingAdjust), keeping the joint flush.
+	local placement = RoadMath.placementFrame(openEnd)
+	local outward = placement.LookVector
 	local joinLocal = RoadMath.localEndpointFrame(kind, size, width, false, joinId)
 	local targetYaw = yawAngleOf(-outward)
 	local nominalYaw = yawAngleOf(joinLocal.LookVector)
 	local rotation = CFrame.Angles(0, targetYaw - nominalYaw, 0)
 
-	local pivotPosition = openEnd.WorldCFrame.Position - rotation:VectorToWorldSpace(joinLocal.Position)
+	local pivotPosition = placement.Position - rotation:VectorToWorldSpace(joinLocal.Position)
 	return kind, joinId, rotation + pivotPosition, size
 end
 
