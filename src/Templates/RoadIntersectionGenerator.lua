@@ -303,7 +303,7 @@ local Generator: GeneratorModuleDefinition<typeof(defaultAttributes)> = {
 				-- Distances along the pavement edges to the open end planes
 				local dzAvail = (-sX * halfZ - Pin.Z) / -sX
 				local dxAvail = halfX - sZ * Pin:Dot(uX)
-				local d = math.min(dzAvail, dxAvail) * 0.999
+				local d = math.min(dzAvail, dxAvail)
 				if d > 0.5 then
 					local theta = math.acos(math.clamp(eZdir:Dot(eXdir), -1, 1))
 					local r = d * math.tan(theta / 2)
@@ -340,12 +340,12 @@ local Generator: GeneratorModuleDefinition<typeof(defaultAttributes)> = {
 					end
 					-- Straight sidewalk strips from the arc ends to the open
 					-- ends, INSIDE the pavement edge like the road profile
-					if dzAvail - d > 0.05 then
+					if dzAvail - d > 1e-3 then
 						local inward = nZ * (-sZ * sw)
 						local endEdge = Pin + eZdir * dzAvail
 						walkQuad(T1, T1 + inward, endEdge + inward, endEdge)
 					end
-					if dxAvail - d > 0.05 then
+					if dxAvail - d > 1e-3 then
 						local inward = nX * (-sX * sw)
 						local endEdge = Pin + eXdir * dxAvail
 						walkQuad(T2, T2 + inward, endEdge + inward, endEdge)
@@ -360,10 +360,10 @@ local Generator: GeneratorModuleDefinition<typeof(defaultAttributes)> = {
 							local bPt = center + dirs[i + 1] * r
 							blendBox(aPt, bPt, -(dirs[i] + dirs[i + 1]).Unit)
 						end
-						if dzAvail - d > 0.05 then
+						if dzAvail - d > 1e-3 then
 							blendBox(T1, Pin + eZdir * dzAvail, nZ * sZ)
 						end
-						if dxAvail - d > 0.05 then
+						if dxAvail - d > 1e-3 then
 							blendBox(T2, Pin + eXdir * dxAvail, nX * sX)
 						end
 					end
