@@ -66,6 +66,8 @@ export type SelectionState = {
 	LaneWidth: number,
 	SidewalkWidth: number,
 	IntersectionAngle: number,
+	-- Intersection bounding box size in excess of the roads' widths
+	ExtraMargin: number,
 }
 
 local function createFixedSelection(onCleared: () -> ())
@@ -1688,6 +1690,7 @@ local function createRoadSession(plugin: Plugin)
 			LaneWidth = (selected.Segment.Model:GetAttribute("LaneWidth" .. laneAxisSuffix) :: number?) or 24,
 			SidewalkWidth = (selected.Segment.Model:GetAttribute("SidewalkWidth") :: number?) or 8,
 			IntersectionAngle = (selected.Segment.Model:GetAttribute("IntersectionAngle") :: number?) or 90,
+			ExtraMargin = math.round((selected.Segment.Size.X - selected.Segment.Width) * 100) / 100,
 		} :: any
 	end
 
@@ -1726,7 +1729,6 @@ local function createRoadSession(plugin: Plugin)
 			-- grows/shrinks with the width so the corner turn space is kept,
 			-- which moves the exits; the joined roads follow to make space.
 			local axis = if selected.Id == "XPlus" or selected.Id == "XMinus" then "X" else "Z"
-			local attrName = if name == "SidewalkWidth" then "SidewalkWidth" else name .. axis
 			local function roadWidths(): (number, number)
 				local sw = (model:GetAttribute("SidewalkWidth") :: number?) or 8
 				local wZ = ((model:GetAttribute("LaneCountZ") :: number?) or 2)
@@ -1736,13 +1738,23 @@ local function createRoadSession(plugin: Plugin)
 				return wZ, wX
 			end
 			local connections = collectIntersectionConnections(selected.Segment)
-			local oldWZ, oldWX = roadWidths()
 			beginRecording("Resize Intersection")
-			model:SetAttribute(attrName, value)
-			local newWZ, newWX = roadWidths()
-			local size = (model :: any).Size :: Vector3
-			-- The Z road spans across the box's X extent and vice versa
-			;(model :: any).Size = Vector3.new(size.X + (newWZ - oldWZ), size.Y, size.Z + (newWX - oldWX))
+			if name == "ExtraMargin" then
+				-- The excess box size beyond the roads' widths, applied to
+				-- both axes symmetrically
+				local margin = math.max(value, 0)
+				local wZ, wX = roadWidths()
+				local size = (model :: any).Size :: Vector3
+				;(model :: any).Size = Vector3.new(wZ + margin, size.Y, wX + margin)
+			else
+				local attrName = if name == "SidewalkWidth" then "SidewalkWidth" else name .. axis
+				local oldWZ, oldWX = roadWidths()
+				model:SetAttribute(attrName, value)
+				local newWZ, newWX = roadWidths()
+				local size = (model :: any).Size :: Vector3
+				-- The Z road spans across the box's X extent and vice versa
+				;(model :: any).Size = Vector3.new(size.X + (newWZ - oldWZ), size.Y, size.Z + (newWX - oldWX))
+			end
 			reseatConnectedEnds(model, connections)
 			finishRecording()
 			updateDragger()

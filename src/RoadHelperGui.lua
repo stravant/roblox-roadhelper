@@ -319,6 +319,23 @@ local function SizingPanel(props: {
 				end,
 			}),
 		}),
+		ExtraMarginInput = if (state :: any).SegmentKind == "Intersection"
+			then e(HelpGui.WithHelpIcon, {
+				Help = e(HelpGui.BasicTooltip, {
+					HelpRichText = "Bounding box size beyond what the roads' widths require. More margin means more open pavement and smoother corner curves.",
+				}),
+				LayoutOrder = 4,
+				Subject = e(NumberInput, {
+					Label = "Extra Margin",
+					Value = (state :: any).ExtraMargin,
+					ValueEntered = function(value: number): number?
+						local margin = math.max(value, 0)
+						props.SetSizing("ExtraMargin", margin)
+						return margin
+					end,
+				}),
+			})
+			else nil,
 	})
 end
 
