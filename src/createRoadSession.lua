@@ -910,6 +910,24 @@ local function createRoadSession(plugin: Plugin)
 		newModel:PivotTo(pivot)
 		newModel.Parent = sourceModel.Parent
 
+		-- A plain click on the straight handle should jut straight out of the
+		-- open end's ACTUAL face even when it is angled: both end Dirs already
+		-- match the face's yaw, so aiming the far endpoint along the actual
+		-- direction degenerates the path to a dead-straight diagonal within
+		-- the box-aligned bounds. (A drag re-solves the far end anyway.)
+		if kind == "Straight" and math.abs(matching.Dir) > 0.01 then
+			local info = RoadMath.getSegmentInfo(newModel)
+			if info then
+				local target = openEnd.WorldCFrame.Position
+					+ RoadMath.actualOutwardDirection(openEnd) * size.Z
+				local ok, err = pcall(function()
+					applySolution(newModel, RoadMath.solveMove(info, farId, target))
+				end)
+				if not ok then
+					warn("RoadHelper: Straight extension failed: " .. tostring(err))
+				end
+			end
+		end
 		return newModel, farId
 	end
 
