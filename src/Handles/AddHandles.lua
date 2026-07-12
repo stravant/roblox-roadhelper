@@ -130,7 +130,7 @@ function AddHandles:render(hoveredHandleId)
 			-- small cutouts at the corners, reading as a crossing
 			local fullSize = size * 1.4
 			local barWidth = fullSize * 0.6
-			local thickness = size * 0.55
+			local thickness = size * 0.3
 			local frameCF = CFrame.lookAlong(handle.Position, handle.Outward)
 			for i, barSize in {
 				Vector3.new(barWidth, thickness, fullSize),
