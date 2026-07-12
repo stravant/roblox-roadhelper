@@ -43,10 +43,9 @@ local function describeStatus(state: createRoadSession.SelectionState): string
 	elseif (state :: any).SegmentKind == "Intersection" then
 		if state.Kind == "open" then
 			return "<b>Intersection exit selected.</b>"
-				.. "\nDrag a cone to extend this exit with a new road segment. The central handles move or rotate the whole intersection, and connected roads follow. On a 4-way, click an exit's red \u{2715} to remove it, making a T junction; on a T, click the green + to restore the fourth exit."
+				.. "\nDrag a cone to extend this exit; the central handles move the whole intersection."
 		else
 			return "<b>Connected intersection exit selected.</b>"
-				.. "\nThe central handles move or rotate the whole intersection, with connected roads following. Select the joined road's end to edit the joint itself."
 		end
 	elseif state.Kind == "open" then
 		return "<b>Open endpoint selected.</b>"
@@ -84,11 +83,47 @@ local function ParametersPanel(props: {
 	SelectionState: createRoadSession.SelectionState,
 	SetAdjustValue: (axis: RoadMath.AdjustAxis, value: number) -> (),
 	SetBlend: (value: boolean) -> (),
+	SetSegmentAttribute: (name: string, value: any) -> (),
 	LayoutOrder: number?,
 })
 	local state = props.SelectionState
-	if state.Kind == "none" or (state :: any).SegmentKind == "Intersection" then
+	if state.Kind == "none" then
 		return nil :: any
+	end
+	if (state :: any).SegmentKind == "Intersection" then
+		return e(SubPanel, {
+			Title = "Parameters (Attributes)",
+			Padding = UDim.new(0, 6),
+			LayoutOrder = props.LayoutOrder,
+		}, {
+			AngleInput = e(HelpGui.WithHelpIcon, {
+				Help = e(HelpGui.BasicTooltip, {
+					HelpRichText = "The angle between the intersection's two roads. The angled road's exits swing to match, and joined roads follow.",
+				}),
+				LayoutOrder = 1,
+				Subject = e(NumberInput, {
+					Label = "Angle",
+					Value = (state :: any).IntersectionAngle,
+					Unit = "°",
+					ValueEntered = function(value: number): number?
+						local clamped = math.clamp(value, 25, 155)
+						props.SetSegmentAttribute("IntersectionAngle", clamped)
+						return clamped
+					end,
+				}),
+			}),
+			HaveSkirt = e(HelpGui.WithHelpIcon, {
+				Help = e(HelpGui.BasicTooltip, {
+					HelpRichText = "Adds a sloped fill skirt along the intersection's edges that ramps down into the surrounding terrain.",
+				}),
+				LayoutOrder = 2,
+				Subject = e(Checkbox, {
+					Label = "Have skirt",
+					Checked = state.Blend,
+					Changed = props.SetBlend,
+				}),
+			}),
+		})
 	end
 	local nextOrder = createNextOrder()
 	return e(SubPanel, {
@@ -167,7 +202,7 @@ local function DetailPanel(props: {
 	LayoutOrder: number?,
 })
 	local state = props.SelectionState
-	if state.Kind == "none" or (state :: any).SegmentKind == "Intersection" then
+	if state.Kind == "none" then
 		return nil :: any
 	end
 	local chips: { [string]: any } = {
@@ -229,7 +264,7 @@ local function SizingPanel(props: {
 	LayoutOrder: number?,
 })
 	local state = props.SelectionState
-	if state.Kind == "none" or (state :: any).SegmentKind == "Intersection" then
+	if state.Kind == "none" then
 		return nil :: any
 	end
 	return e(SubPanel, {
@@ -531,6 +566,7 @@ local function RoadHelperGui(props: {
 			SelectionState = props.SelectionState,
 			SetAdjustValue = props.SetAdjustValue,
 			SetBlend = props.SetBlend,
+			SetSegmentAttribute = props.SetSegmentAttribute,
 			LayoutOrder = nextOrder(),
 		}),
 		DetailPanel = e(DetailPanel, {

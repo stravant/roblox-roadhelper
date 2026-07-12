@@ -65,6 +65,7 @@ export type SelectionState = {
 	LaneCount: number,
 	LaneWidth: number,
 	SidewalkWidth: number,
+	IntersectionAngle: number,
 }
 
 local function createFixedSelection(onCleared: () -> ())
@@ -628,6 +629,21 @@ local function createRoadSession(plugin: Plugin)
 		end
 	end
 
+	-- All road ends joined to an intersection's exits
+	local function collectIntersectionConnections(segment: RoadMath.SegmentInfo): { IntersectionConnection }
+		local connected: { IntersectionConnection } = {}
+		for _, endpoint in RoadMath.allEndpoints(segment) do
+			local partner = partnerOfEndpoint(endpoint)
+			if partner and partner.Segment.Kind ~= "Intersection" then
+				table.insert(connected, {
+					Ref = { Model = partner.Segment.Model, Id = partner.Id },
+					EndId = endpoint.Id,
+				})
+			end
+		end
+		return connected
+	end
+
 	-- Move targets are captured at drag start: the selected end plus the mated
 	-- partner end if the endpoint is closed. A road end mated to an
 	-- intersection instead carries the whole intersection along, and the
@@ -1082,16 +1098,7 @@ local function createRoadSession(plugin: Plugin)
 		if not selected or selected.Segment.Kind ~= "Intersection" then
 			return
 		end
-		local connected: { IntersectionConnection } = {}
-		for _, endpoint in RoadMath.allEndpoints(selected.Segment) do
-			local partner = partnerOfEndpoint(endpoint)
-			if partner and partner.Segment.Kind ~= "Intersection" then
-				table.insert(connected, {
-					Ref = { Model = partner.Segment.Model, Id = partner.Id },
-					EndId = endpoint.Id,
-				})
-			end
-		end
+		local connected = collectIntersectionConnections(selected.Segment)
 		local startAngle = selected.Segment.Model:GetAttribute("IntersectionAngle")
 		intersectionDrag = {
 			Model = selected.Segment.Model,
@@ -1634,6 +1641,10 @@ local function createRoadSession(plugin: Plugin)
 			return { Kind = "none" :: "none" }
 		end
 		local partner = getPartnerEndpoint()
+		local laneAxisSuffix = ""
+		if selected.Segment.Kind == "Intersection" then
+			laneAxisSuffix = if selected.Id == "XPlus" or selected.Id == "XMinus" then "X" else "Z"
+		end
 		return {
 			Kind = if partner then "closed" else "open",
 			SegmentKind = selected.Segment.Kind,
@@ -1645,9 +1656,11 @@ local function createRoadSession(plugin: Plugin)
 			Blend = selected.Segment.Model:GetAttribute("Blend") == true,
 			TextureLaneMarkings = selected.Segment.Model:GetAttribute("TextureLaneMarkings") == true,
 			MaxAngle = (selected.Segment.Model:GetAttribute("MaxAngle") :: number?) or 10,
-			LaneCount = (selected.Segment.Model:GetAttribute("LaneCount") :: number?) or 2,
-			LaneWidth = (selected.Segment.Model:GetAttribute("LaneWidth") :: number?) or 24,
+			-- For intersections, the lane layout of the selected end's road
+			LaneCount = (selected.Segment.Model:GetAttribute("LaneCount" .. laneAxisSuffix) :: number?) or 2,
+			LaneWidth = (selected.Segment.Model:GetAttribute("LaneWidth" .. laneAxisSuffix) :: number?) or 24,
 			SidewalkWidth = (selected.Segment.Model:GetAttribute("SidewalkWidth") :: number?) or 8,
+			IntersectionAngle = (selected.Segment.Model:GetAttribute("IntersectionAngle") :: number?) or 90,
 		} :: any
 	end
 
@@ -1657,9 +1670,18 @@ local function createRoadSession(plugin: Plugin)
 		if not selected then
 			return
 		end
+		local connections = if selected.Segment.Kind == "Intersection"
+			then collectIntersectionConnections(selected.Segment)
+			else nil
 		beginRecording("Edit Road")
 		selected.Segment.Model:SetAttribute(name, value)
+		if connections then
+			-- Geometry-affecting attributes (like the intersection angle)
+			-- move the exits; keep the joined roads sealed
+			reseatConnectedEnds(selected.Segment.Model, connections)
+		end
 		finishRecording()
+		updateDragger()
 		changeSignal:Fire()
 	end
 
@@ -1672,6 +1694,34 @@ local function createRoadSession(plugin: Plugin)
 			return
 		end
 		local model = selected.Segment.Model
+		if selected.Segment.Kind == "Intersection" then
+			-- Adjust the selected end's road on the intersection. The box
+			-- grows/shrinks with the width so the corner turn space is kept,
+			-- which moves the exits; the joined roads follow to make space.
+			local axis = if selected.Id == "XPlus" or selected.Id == "XMinus" then "X" else "Z"
+			local attrName = if name == "SidewalkWidth" then "SidewalkWidth" else name .. axis
+			local function roadWidths(): (number, number)
+				local sw = (model:GetAttribute("SidewalkWidth") :: number?) or 8
+				local wZ = ((model:GetAttribute("LaneCountZ") :: number?) or 2)
+					* ((model:GetAttribute("LaneWidthZ") :: number?) or 24) + 2 * sw
+				local wX = ((model:GetAttribute("LaneCountX") :: number?) or 2)
+					* ((model:GetAttribute("LaneWidthX") :: number?) or 24) + 2 * sw
+				return wZ, wX
+			end
+			local connections = collectIntersectionConnections(selected.Segment)
+			local oldWZ, oldWX = roadWidths()
+			beginRecording("Resize Intersection")
+			model:SetAttribute(attrName, value)
+			local newWZ, newWX = roadWidths()
+			local size = (model :: any).Size :: Vector3
+			-- The Z road spans across the box's X extent and vice versa
+			;(model :: any).Size = Vector3.new(size.X + (newWZ - oldWZ), size.Y, size.Z + (newWX - oldWX))
+			reseatConnectedEnds(model, connections)
+			finishRecording()
+			updateDragger()
+			changeSignal:Fire()
+			return
+		end
 		local layout: { [string]: number } = {
 			LaneCount = (model:GetAttribute("LaneCount") :: number?) or 2,
 			LaneWidth = (model:GetAttribute("LaneWidth") :: number?) or 24,
