@@ -1097,6 +1097,33 @@ local function createRoadSession(plugin: Plugin)
 		changeSignal:Fire()
 	end
 
+	-- The reverse: a T junction's missing exit can be restored, turning it
+	-- back into a 4-way. Pure attribute toggle; nothing moves.
+	local function getRestorableExit(): RoadMath.Endpoint?
+		local selected = getSelectedEndpoint()
+		if not selected
+			or selected.Segment.Kind ~= "Intersection"
+			or selected.Segment.ThroughRoad ~= false
+		then
+			return nil
+		end
+		return RoadMath.getEndpoint(selected.Segment, "XMinus")
+	end
+
+	local function restoreExit(exit: RoadMath.Endpoint)
+		local beforeSelection = snapshotSelection()
+		gestureActive = true
+		beginRecording("Make Cross Intersection")
+		exit.Segment.Model:SetAttribute("ThroughRoad", true)
+		if activeRecordingName then
+			pushSelectionHistory(activeRecordingName, beforeSelection, snapshotSelection())
+		end
+		finishRecording()
+		gestureActive = false
+		updateDragger()
+		changeSignal:Fire()
+	end
+
 	local function endIntersectionTransform()
 		intersectionDrag = nil
 		finishRecording()
@@ -1371,6 +1398,8 @@ local function createRoadSession(plugin: Plugin)
 		DeleteExitHandles.new(draggerContext, {
 			GetDeletableExits = getDeletableExits,
 			DeleteExit = deleteExit,
+			GetRestorableExit = getRestorableExit,
+			RestoreExit = restoreExit,
 		}),
 		AddHandles.new(draggerContext, {
 			GetOpenEndpoint = function()
