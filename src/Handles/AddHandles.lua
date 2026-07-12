@@ -22,11 +22,13 @@ local STRAIGHT_COLOR = Color3.fromRGB(240, 240, 240)
 local TURN_COLOR = Color3.fromRGB(255, 200, 60)
 local INTERSECTION_COLOR = Color3.fromRGB(120, 190, 255)
 
-local AddHandleDefinitions: { [string]: { Turn: RoadMath.TurnDirection, Ahead: number, Aside: number, Color: Color3 } } = {
-	AddLeft = { Turn = "Left", Ahead = AHEAD * 0.75, Aside = -ASIDE * 1.4, Color = TURN_COLOR },
-	AddStraight = { Turn = "Straight", Ahead = AHEAD, Aside = -ASIDE * 0.45, Color = STRAIGHT_COLOR },
-	AddIntersection = { Turn = "Intersection", Ahead = AHEAD, Aside = ASIDE * 0.45, Color = INTERSECTION_COLOR },
-	AddRight = { Turn = "Right", Ahead = AHEAD * 0.75, Aside = ASIDE * 1.4, Color = TURN_COLOR },
+-- Aside is the four-handle layout; AsideCompact is the centred three-handle
+-- layout used when the intersection extension isn't offered
+local AddHandleDefinitions: { [string]: { Turn: RoadMath.TurnDirection, Ahead: number, Aside: number, AsideCompact: number, Color: Color3 } } = {
+	AddLeft = { Turn = "Left", Ahead = AHEAD * 0.75, Aside = -ASIDE * 1.4, AsideCompact = -ASIDE, Color = TURN_COLOR },
+	AddStraight = { Turn = "Straight", Ahead = AHEAD, Aside = -ASIDE * 0.45, AsideCompact = 0, Color = STRAIGHT_COLOR },
+	AddIntersection = { Turn = "Intersection", Ahead = AHEAD, Aside = ASIDE * 0.45, AsideCompact = 0, Color = INTERSECTION_COLOR },
+	AddRight = { Turn = "Right", Ahead = AHEAD * 0.75, Aside = ASIDE * 1.4, AsideCompact = ASIDE, Color = TURN_COLOR },
 }
 
 local AddHandles = {}
@@ -72,15 +74,17 @@ function AddHandles:update(draggerToolModel, selectionInfo)
 	local right = -aside
 	local scale = self._draggerContext:getHandleScale(frame.Position)
 	local handles = {}
+	-- Two intersections directly against each other makes no sense, so
+	-- intersection exits don't offer the intersection extension and the
+	-- remaining three handles use the centred compact layout
+	local compact = endpoint.Segment.Kind == "Intersection"
 	for handleId, def in AddHandleDefinitions do
-		-- Two intersections directly against each other makes no sense, so
-		-- intersection exits don't offer the intersection extension
-		if def.Turn == "Intersection" and endpoint.Segment.Kind == "Intersection" then
+		if def.Turn == "Intersection" and compact then
 			continue
 		end
 		local position = frame.Position
 			+ outward * (def.Ahead * scale)
-			+ right * (def.Aside * scale)
+			+ right * ((if compact then def.AsideCompact else def.Aside) * scale)
 		handles[handleId] = {
 			Turn = def.Turn,
 			Position = position,
