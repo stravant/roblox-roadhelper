@@ -1873,6 +1873,7 @@ local function createRoadSession(plugin: Plugin)
 			end
 		end
 		newModel:SetAttribute("ThroughRoad", throughRoad)
+		newModel:SetAttribute("IntersectionAngle", 90)
 
 		-- Default size from the lane layout, like extending with one
 		local sidewalk = (newModel:GetAttribute("SidewalkWidth") :: number?) or 8
