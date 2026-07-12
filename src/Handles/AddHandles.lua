@@ -20,11 +20,13 @@ local DRAG_START_THRESHOLD = 3
 
 local STRAIGHT_COLOR = Color3.fromRGB(240, 240, 240)
 local TURN_COLOR = Color3.fromRGB(255, 200, 60)
+local INTERSECTION_COLOR = Color3.fromRGB(120, 190, 255)
 
 local AddHandleDefinitions: { [string]: { Turn: RoadMath.TurnDirection, Ahead: number, Aside: number, Color: Color3 } } = {
-	AddLeft = { Turn = "Left", Ahead = AHEAD * 0.75, Aside = -ASIDE, Color = TURN_COLOR },
-	AddStraight = { Turn = "Straight", Ahead = AHEAD, Aside = 0, Color = STRAIGHT_COLOR },
-	AddRight = { Turn = "Right", Ahead = AHEAD * 0.75, Aside = ASIDE, Color = TURN_COLOR },
+	AddLeft = { Turn = "Left", Ahead = AHEAD * 0.75, Aside = -ASIDE * 1.4, Color = TURN_COLOR },
+	AddStraight = { Turn = "Straight", Ahead = AHEAD, Aside = -ASIDE * 0.45, Color = STRAIGHT_COLOR },
+	AddIntersection = { Turn = "Intersection", Ahead = AHEAD, Aside = ASIDE * 0.45, Color = INTERSECTION_COLOR },
+	AddRight = { Turn = "Right", Ahead = AHEAD * 0.75, Aside = ASIDE * 1.4, Color = TURN_COLOR },
 }
 
 local AddHandles = {}
@@ -114,6 +116,20 @@ function AddHandles:render(hoveredHandleId)
 	for handleId, handle in self._handles do
 		local hovered = handleId == hoveredHandleId or handleId == self._draggingHandleId
 		local size = MARKER_SIZE * handle.Scale * (if hovered then 1.25 else 1)
+		if handle.Turn == "Intersection" then
+			-- A flat cube reading as a crossing rather than a direction
+			children[handleId] = Roact.createElement("BoxHandleAdornment", {
+				Adornee = workspace.Terrain,
+				CFrame = CFrame.lookAlong(handle.Position, handle.Outward),
+				Size = Vector3.new(size * 1.4, size * 0.55, size * 1.4),
+				Color3 = handle.Color,
+				Transparency = if hovered then 0 else 0.25,
+				AlwaysOnTop = false,
+				Shading = Enum.AdornShading.XRay,
+				ZIndex = 0,
+			})
+			continue
+		end
 		local look: Vector3
 		if handle.Turn == "Straight" then
 			look = handle.Outward

@@ -893,11 +893,61 @@ local function createRoadSession(plugin: Plugin)
 		return newModel, farId
 	end
 
+	-- Create a new intersection joined to an open road end: its ZMinus exit
+	-- mates the end's actual face, sized square at 3x the road width, lane
+	-- layout matching the road on both of its axes.
+	local function createJoinedIntersection(openEnd: RoadMath.Endpoint): Model?
+		local sourceModel = openEnd.Segment.Model
+		local template = findTemplate("Intersection", openEnd.WorldCFrame.Position)
+		if not template then
+			warn("RoadHelper: No RoadIntersection found in the place to use as a template.")
+			return nil
+		end
+		local newModel = template.Model:Clone()
+		local generated = newModel:FindFirstChild("Generated")
+		if generated then
+			generated:Destroy()
+		end
+		for name, value in sourceModel:GetAttributes() do
+			if not GEOMETRY_ATTRIBUTES[name] then
+				newModel:SetAttribute(name, value)
+			end
+		end
+		local laneCount = sourceModel:GetAttribute("LaneCount")
+		local laneWidth = sourceModel:GetAttribute("LaneWidth")
+		newModel:SetAttribute("LaneCountZ", laneCount or 2)
+		newModel:SetAttribute("LaneWidthZ", laneWidth or 24)
+		newModel:SetAttribute("LaneCountX", laneCount or 2)
+		newModel:SetAttribute("LaneWidthX", laneWidth or 24)
+		newModel:SetAttribute("IntersectionAngle", 90)
+		newModel:SetAttribute("ThroughRoad", true)
+
+		local width = RoadMath.endpointWidth(openEnd)
+		local boxSize = 3 * width
+		local size = Vector3.new(boxSize, 0, boxSize);
+		(newModel :: any).Size = size
+		-- ZMinus (local -Z) exit opposes the road end's actual face
+		local outward = RoadMath.actualOutwardDirection(openEnd)
+		local rotation = CFrame.lookAlong(Vector3.zero, -outward).Rotation
+		local exitLocal = Vector3.new(0, -size.Y / 2, -boxSize / 2)
+		newModel:PivotTo(rotation + (openEnd.WorldCFrame.Position - rotation:VectorToWorldSpace(exitLocal)))
+		newModel.Parent = sourceModel.Parent
+		return newModel
+	end
+
 	-- Add-drag state (from AddHandles)
 	local addDragRef: EndpointRef? = nil
 	local addSourceRef: EndpointRef? = nil
 	local addDragOriginalAdjust: { [RoadMath.AdjustAxis]: number }? = nil
 	local addBeforeSelection: SelectionSnapshot = nil
+	-- Intersection adds can't resize on drag; the whole intersection (and the
+	-- source road's end with it) moves instead
+	local intersectionAdd: {
+		Model: Model,
+		StartPivot: CFrame,
+		ExitStart: Vector3,
+		SourceRef: EndpointRef,
+	}? = nil
 
 	local function startAdd(turn: RoadMath.TurnDirection): number?
 		local selected = getSelectedEndpoint()
@@ -906,6 +956,25 @@ local function createRoadSession(plugin: Plugin)
 		end
 		gestureActive = true
 		addBeforeSelection = snapshotSelection()
+		if turn == "Intersection" then
+			beginRecording("Add Intersection")
+			local newModel = createJoinedIntersection(selected)
+			if not newModel then
+				finishRecording()
+				gestureActive = false
+				return nil
+			end
+			intersectionAdd = {
+				Model = newModel,
+				StartPivot = newModel:GetPivot(),
+				ExitStart = selected.WorldCFrame.Position,
+				SourceRef = { Model = selected.Segment.Model, Id = selected.Id },
+			}
+			-- Select the opposite exit, ready to keep extending
+			selectedRef = { Model = newModel, Id = "ZPlus" }
+			changeSignal:Fire()
+			return selected.WorldCFrame.Position.Y
+		end
 		beginRecording("Add Segment")
 		local newModel, farId = createJoinedSegment(selected, turn)
 		if not newModel or not farId then
@@ -923,6 +992,23 @@ local function createRoadSession(plugin: Plugin)
 	end
 
 	local function applyAddDrag(worldPosition: Vector3)
+		local ix = intersectionAdd
+		if ix then
+			-- Move the intersection so its mating exit follows the cursor,
+			-- dragging the extended road end along with it
+			ix.Model:PivotTo(ix.StartPivot + (worldPosition - ix.ExitStart))
+			local roadInfo = RoadMath.getSegmentInfo(ix.SourceRef.Model)
+			if roadInfo then
+				local ok, err = pcall(function()
+					applySolutionToRef(ix.SourceRef, RoadMath.solveMove(roadInfo, ix.SourceRef.Id, worldPosition))
+				end)
+				if not ok then
+					warn("RoadHelper: Intersection placement failed: " .. tostring(err))
+				end
+			end
+			changeSignal:Fire()
+			return
+		end
 		local ref = addDragRef
 		if not ref then
 			return
@@ -954,6 +1040,7 @@ local function createRoadSession(plugin: Plugin)
 		addDragRef = nil
 		addSourceRef = nil
 		addDragOriginalAdjust = nil
+		intersectionAdd = nil
 		if activeRecordingName then
 			pushSelectionHistory(activeRecordingName, addBeforeSelection, snapshotSelection())
 		end

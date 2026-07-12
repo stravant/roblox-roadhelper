@@ -491,7 +491,7 @@ end
 -- New segment placement
 --------------------------------------------------------------------------------
 
-export type TurnDirection = "Left" | "Straight" | "Right"
+export type TurnDirection = "Left" | "Straight" | "Right" | "Intersection"
 
 -- Plan-view angle of a direction vector, matching the clockwise-positive
 -- convention: angle(v) increases when v is rotated by CFrame.Angles(0, a, 0)
