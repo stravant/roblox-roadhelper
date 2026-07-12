@@ -83,12 +83,11 @@ function EndpointPickHandles:render(hoveredHandleId)
 	local selected = self._props.GetSelectedEndpoint()
 	local hover = self._hoverEndpoint
 	if hoveredHandleId == HOVER_HANDLE_ID and hover and not isSameEndpoint(hover, selected) then
+		-- Note: hovering the mate of the selected endpoint deliberately DOES
+		-- show hover UX; picking the other side of a joint is meaningful
+		-- (especially road vs intersection sides, which offer different
+		-- handles).
 		local partner = self._props.GetPartner(hover)
-		if partner and isSameEndpoint(partner, selected) then
-			-- The hovered end is the mate of the selected one: the joint is
-			-- already selected, so offer no re-pick affordance for it.
-			return Roact.createElement("Folder", {}, children)
-		end
 		local frame = hover.WorldCFrame
 		local width = RoadMath.endpointWidth(hover)
 		local color = if hover.Id == "Blue" then BLUE else RED
