@@ -1040,6 +1040,7 @@ local function createRoadSession(plugin: Plugin)
 		local model = exit.Segment.Model
 		local selectedBefore = getSelectedEndpoint()
 		local selectedPosition = if selectedBefore then selectedBefore.WorldCFrame.Position else nil
+		local beforeSelection = snapshotSelection()
 		gestureActive = true
 		beginRecording("Make T Junction")
 		local pivot = model:GetPivot()
@@ -1073,7 +1074,6 @@ local function createRoadSession(plugin: Plugin)
 		if yaw ~= 0 then
 			model:PivotTo(CFrame.new(pivot.Position) * pivot.Rotation * CFrame.Angles(0, math.rad(yaw), 0))
 		end
-		finishRecording()
 		-- Endpoint ids were reshuffled by the transform: re-select whichever
 		-- surviving end is where the old selection was (or clear it if the
 		-- selected exit is the one that was deleted)
@@ -1087,6 +1087,11 @@ local function createRoadSession(plugin: Plugin)
 				end
 			end
 		end
+		-- Restore the selection through undo/redo like the add gestures do
+		if activeRecordingName then
+			pushSelectionHistory(activeRecordingName, beforeSelection, snapshotSelection())
+		end
+		finishRecording()
 		gestureActive = false
 		updateDragger()
 		changeSignal:Fire()
