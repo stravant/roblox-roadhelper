@@ -256,6 +256,20 @@ function RoadMath.endpointWidth(endpoint: Endpoint): number
 	return endpoint.Segment.Width
 end
 
+-- The endpoint frame rotated to the end's *actual* face: the effective Dir
+-- yaw applied about the frame's up axis, position unchanged. Used to align
+-- handles and hover UX with the face rather than the bounding box.
+function RoadMath.actualEndpointFrame(endpoint: Endpoint): CFrame
+	local dirName = if endpoint.Id == "Blue" then "AdjustBlueDir" else "AdjustRedDir"
+	local dirAngle = math.rad(getNumberAttribute(endpoint.Segment.Model, dirName, 0))
+	dirAngle *= RoadMath.flipFactor(endpoint.Segment, "Dir")
+	local frame = endpoint.WorldCFrame
+	if dirAngle == 0 then
+		return frame
+	end
+	return CFrame.fromAxisAngle(frame.UpVector, dirAngle) * (frame - frame.Position) + frame.Position
+end
+
 -- The outward direction of the end's *actual* (Adjust-angle rotated) face, in
 -- world space, horizontal component only. Used for placing new segments off an
 -- open end so they align with the face rather than the nominal frame.

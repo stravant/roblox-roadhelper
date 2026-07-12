@@ -1394,7 +1394,8 @@ local function createRoadSession(plugin: Plugin)
 				if not endpoint or endpoint.Segment.Kind == "Intersection" then
 					return nil
 				end
-				return endpoint.WorldCFrame
+				-- Handles align with the end's actual face, not the box
+				return RoadMath.actualEndpointFrame(endpoint)
 			end,
 			GetDragExclusions = function(): { Instance }
 				local exclusions: { Instance } = {}
@@ -1429,7 +1430,8 @@ local function createRoadSession(plugin: Plugin)
 				if not endpoint or endpoint.Segment.Kind == "Intersection" then
 					return nil
 				end
-				return endpoint.WorldCFrame
+				-- Handles align with the end's actual face, not the box
+				return RoadMath.actualEndpointFrame(endpoint)
 			end,
 			StartRotate = startRotate,
 			ApplyRotate = applyRotate,

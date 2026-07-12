@@ -88,7 +88,9 @@ function EndpointPickHandles:render(hoveredHandleId)
 		-- (especially road vs intersection sides, which offer different
 		-- handles).
 		local partner = self._props.GetPartner(hover)
-		local frame = hover.WorldCFrame
+		-- Lay the rectangle along the end's actual (Dir-rotated) face rather
+		-- than the bounding box, so it matches what you see on angled ends
+		local frame = RoadMath.actualEndpointFrame(hover)
 		local width = RoadMath.endpointWidth(hover)
 		local color = if hover.Id == "Blue" then BLUE else RED
 		local intoSegment = true
