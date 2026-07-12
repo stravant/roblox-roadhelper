@@ -376,6 +376,9 @@ local Generator: GeneratorModuleDefinition<typeof(defaultAttributes)> = {
 					end
 					cornerData[sZ .. "," .. sX] = {
 						edgeArc = edgeArc,
+						-- Miter extension so consecutive chord strips meet at
+						-- their outer corners instead of leaving a wedge gap
+						edgeExtend = (MARK_WIDTH / 2) * math.tan(math.abs(sweep) / (2 * steps)),
 						tZ = -sX * Pin.Z + d,
 						tX = sZ * Pin:Dot(uX) + d,
 					}
@@ -459,11 +462,19 @@ local Generator: GeneratorModuleDefinition<typeof(defaultAttributes)> = {
 				return markings
 			end
 
-			-- The outermost lane markings follow the corner curves
+			-- The outermost lane markings follow the corner curves. Each
+			-- chord strip is miter-extended so the OUTER corners of
+			-- consecutive strips join, rather than their centrelines.
 			for _, data in cornerData do
 				local pts = data.edgeArc
 				for i = 1, #pts - 1 do
-					markingStrip(pts[i], pts[i + 1], laneMarkingColor, MARK_WIDTH)
+					local dir = (pts[i + 1] - pts[i]).Unit
+					markingStrip(
+						pts[i] - dir * data.edgeExtend,
+						pts[i + 1] + dir * data.edgeExtend,
+						laneMarkingColor,
+						MARK_WIDTH
+					)
 				end
 			end
 
