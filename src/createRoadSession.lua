@@ -979,9 +979,14 @@ local function createRoadSession(plugin: Plugin)
 		newModel:SetAttribute("ThroughRoad", true)
 
 		-- Sized from the lane layout: the road width plus three extra lanes'
-		-- worth of space for the corner turn radius
+		-- worth of space for the corner turn radius. Path-like roads (a
+		-- single lane with no sidewalks, e.g. dirt/cobblestone/pebble paths)
+		-- get much tighter corners: one lane's worth.
 		local width = RoadMath.endpointWidth(openEnd)
-		local boxSize = width + 3 * (if typeof(laneWidth) == "number" then laneWidth else 24)
+		local laneWidthNumber = if typeof(laneWidth) == "number" then laneWidth else 24
+		local sidewalk = sourceModel:GetAttribute("SidewalkWidth")
+		local isPath = laneCount == 1 and (sidewalk == 0 or (typeof(sidewalk) ~= "number" and false))
+		local boxSize = width + (if isPath then laneWidthNumber else 3 * laneWidthNumber)
 		local size = Vector3.new(boxSize, 0, boxSize);
 		(newModel :: any).Size = size
 		-- ZMinus (local -Z) exit opposes the road end's actual face
