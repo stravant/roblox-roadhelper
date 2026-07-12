@@ -922,10 +922,10 @@ local function createRoadSession(plugin: Plugin)
 		newModel:SetAttribute("IntersectionAngle", 90)
 		newModel:SetAttribute("ThroughRoad", true)
 
-		-- Sized from the lane layout: the road width plus one extra lane's
+		-- Sized from the lane layout: the road width plus two extra lanes'
 		-- worth of space for the corner turn radius
 		local width = RoadMath.endpointWidth(openEnd)
-		local boxSize = width + (if typeof(laneWidth) == "number" then laneWidth else 24)
+		local boxSize = width + 2 * (if typeof(laneWidth) == "number" then laneWidth else 24)
 		local size = Vector3.new(boxSize, 0, boxSize);
 		(newModel :: any).Size = size
 		-- ZMinus (local -Z) exit opposes the road end's actual face
