@@ -596,14 +596,50 @@ local function createRoadSession(plugin: Plugin)
 		setAdjustAttribute(ref.Model, ref.Id, "Bank", 0)
 	end
 
+	-- A road end joined to one of an intersection's exits, and which exit
+	type IntersectionConnection = {
+		Ref: EndpointRef,
+		EndId: RoadMath.EndpointId,
+	}
+
+	-- Re-seat each connected road end onto its (possibly moved) exit
+	local function reseatConnectedEnds(model: Model, connected: { IntersectionConnection })
+		local info = RoadMath.getSegmentInfo(model)
+		if not info then
+			return
+		end
+		for _, conn in connected do
+			local exit = RoadMath.getEndpoint(info, conn.EndId)
+			local roadInfo = RoadMath.getSegmentInfo(conn.Ref.Model)
+			if roadInfo then
+				local ok, err = pcall(function()
+					applySolutionToRef(conn.Ref, RoadMath.solveMove(roadInfo, conn.Ref.Id, exit.WorldCFrame.Position))
+				end)
+				if not ok then
+					warn("RoadHelper: Connected road follow failed: " .. tostring(err))
+				end
+				alignEndFaceToMate(conn.Ref, exit)
+			end
+		end
+	end
+
 	-- Move targets are captured at drag start: the selected end plus the mated
-	-- partner end if the endpoint is closed.
+	-- partner end if the endpoint is closed. A road end mated to an
+	-- intersection instead carries the whole intersection along, and the
+	-- intersection's other connected roads follow its exits.
 	local moveTargets: { EndpointRef } = {}
 	local moveOriginalAdjust: { [RoadMath.AdjustAxis]: number }? = nil
+	local moveIntersection: {
+		Model: Model,
+		StartPivot: CFrame,
+		ExitStart: Vector3,
+		Connected: { IntersectionConnection },
+	}? = nil
 
 	local function startMove()
 		moveTargets = {}
 		moveOriginalAdjust = nil
+		moveIntersection = nil
 		local selected = getSelectedEndpoint()
 		if not selected then
 			return
@@ -613,9 +649,31 @@ local function createRoadSession(plugin: Plugin)
 			moveOriginalAdjust = captureAdjust(moveTargets[1])
 		end
 		local partner = getPartnerEndpoint()
-		-- An intersection partner is never moved or resized by a road end
-		-- drag; the road end simply detaches from it
-		if partner and partner.Segment.Kind ~= "Intersection" then
+		if partner and partner.Segment.Kind == "Intersection" then
+			-- The intersection translates along with the dragged end, and its
+			-- other connected roads' ends follow its exits
+			local connected: { IntersectionConnection } = {}
+			for _, endpoint in RoadMath.allEndpoints(partner.Segment) do
+				if endpoint.Id ~= partner.Id then
+					local mate = partnerOfEndpoint(endpoint)
+					if mate
+						and mate.Segment.Kind ~= "Intersection"
+						and mate.Segment.Model ~= selected.Segment.Model
+					then
+						table.insert(connected, {
+							Ref = { Model = mate.Segment.Model, Id = mate.Id },
+							EndId = endpoint.Id,
+						})
+					end
+				end
+			end
+			moveIntersection = {
+				Model = partner.Segment.Model,
+				StartPivot = partner.Segment.Model:GetPivot(),
+				ExitStart = partner.WorldCFrame.Position,
+				Connected = connected,
+			}
+		elseif partner then
 			table.insert(moveTargets, { Model = partner.Segment.Model, Id = partner.Id })
 		end
 		gestureActive = true
@@ -624,7 +682,9 @@ local function createRoadSession(plugin: Plugin)
 
 	local function applyMove(newWorldPosition: Vector3, snapToEnds: boolean?)
 		local snapMate: RoadMath.Endpoint? = nil
-		if snapToEnds then
+		-- With an attached intersection the dragged end stays mated to it, so
+		-- snapping onto other open ends doesn't apply
+		if snapToEnds and not moveIntersection then
 			local movingModels = {}
 			for _, target in moveTargets do
 				table.insert(movingModels, target.Model)
@@ -642,8 +702,13 @@ local function createRoadSession(plugin: Plugin)
 				end
 			end
 		end
+		local ix = moveIntersection
+		if ix then
+			ix.Model:PivotTo(ix.StartPivot + (newWorldPosition - ix.ExitStart))
+			reseatConnectedEnds(ix.Model, ix.Connected)
+		end
 		local dragged = moveTargets[1]
-		if dragged and moveOriginalAdjust then
+		if dragged and moveOriginalAdjust and not moveIntersection then
 			if snapMate and snapMate.Segment.Kind == "Intersection" then
 				alignEndFaceToMate(dragged, snapMate)
 			else
@@ -656,6 +721,7 @@ local function createRoadSession(plugin: Plugin)
 	local function endMove()
 		moveTargets = {}
 		moveOriginalAdjust = nil
+		moveIntersection = nil
 		finishRecording()
 		gestureActive = false
 		updateDragger()
@@ -892,10 +958,6 @@ local function createRoadSession(plugin: Plugin)
 
 	-- Moving/rotating an intersection moves the model itself and drags every
 	-- connected road end along so the joints stay sealed.
-	type IntersectionConnection = {
-		Ref: EndpointRef,
-		EndId: RoadMath.EndpointId,
-	}
 	local intersectionDrag: {
 		Model: Model,
 		StartPivot: CFrame,
@@ -929,37 +991,13 @@ local function createRoadSession(plugin: Plugin)
 		beginRecording("Move Intersection")
 	end
 
-	-- Re-seat each connected road end onto its (possibly moved) exit
-	local function reseatConnectedEnds(state: typeof(intersectionDrag))
-		if not state then
-			return
-		end
-		local info = RoadMath.getSegmentInfo(state.Model)
-		if not info then
-			return
-		end
-		for _, conn in state.Connected do
-			local exit = RoadMath.getEndpoint(info, conn.EndId)
-			local roadInfo = RoadMath.getSegmentInfo(conn.Ref.Model)
-			if roadInfo then
-				local ok, err = pcall(function()
-					applySolutionToRef(conn.Ref, RoadMath.solveMove(roadInfo, conn.Ref.Id, exit.WorldCFrame.Position))
-				end)
-				if not ok then
-					warn("RoadHelper: Connected road follow failed: " .. tostring(err))
-				end
-				alignEndFaceToMate(conn.Ref, exit)
-			end
-		end
-	end
-
 	local function applyIntersectionTransform(pivot: CFrame)
 		local state = intersectionDrag
 		if not state then
 			return
 		end
 		state.Model:PivotTo(pivot)
-		reseatConnectedEnds(state)
+		reseatConnectedEnds(state.Model, state.Connected)
 		changeSignal:Fire()
 	end
 
@@ -1103,6 +1141,16 @@ local function createRoadSession(plugin: Plugin)
 					local partner = getPartnerEndpoint()
 					if partner then
 						table.insert(exclusions, partner.Segment.Model)
+						if partner.Segment.Kind == "Intersection" then
+							-- The intersection and everything joined to it
+							-- move along with the drag
+							for _, endpoint in RoadMath.allEndpoints(partner.Segment) do
+								local mate = partnerOfEndpoint(endpoint)
+								if mate then
+									table.insert(exclusions, mate.Segment.Model)
+								end
+							end
+						end
 					end
 				end
 				return exclusions
@@ -1218,7 +1266,7 @@ local function createRoadSession(plugin: Plugin)
 				local newAngle = math.clamp(math.round((state.StartAngle + deltaDegrees) * 10) / 10, 25, 155)
 				if state.Model:GetAttribute("IntersectionAngle") ~= newAngle then
 					state.Model:SetAttribute("IntersectionAngle", newAngle)
-					reseatConnectedEnds(state)
+					reseatConnectedEnds(state.Model, state.Connected)
 				end
 				changeSignal:Fire()
 			end,
