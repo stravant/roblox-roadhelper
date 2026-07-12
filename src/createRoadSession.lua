@@ -1115,6 +1115,8 @@ local function createRoadSession(plugin: Plugin)
 		gestureActive = true
 		beginRecording("Make Cross Intersection")
 		exit.Segment.Model:SetAttribute("ThroughRoad", true)
+		-- Select the freshly restored exit
+		selectedRef = { Model = exit.Segment.Model, Id = "XMinus" }
 		if activeRecordingName then
 			pushSelectionHistory(activeRecordingName, beforeSelection, snapshotSelection())
 		end
