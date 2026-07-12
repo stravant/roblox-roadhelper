@@ -985,7 +985,7 @@ local function createRoadSession(plugin: Plugin)
 		local width = RoadMath.endpointWidth(openEnd)
 		local laneWidthNumber = if typeof(laneWidth) == "number" then laneWidth else 24
 		local sidewalk = sourceModel:GetAttribute("SidewalkWidth")
-		local isPath = laneCount == 1 and (sidewalk == 0 or (typeof(sidewalk) ~= "number" and false))
+		local isPath = laneCount == 1 and sidewalk == 0
 		local boxSize = width + (if isPath then laneWidthNumber else 3 * laneWidthNumber)
 		local size = Vector3.new(boxSize, 0, boxSize);
 		(newModel :: any).Size = size
