@@ -344,6 +344,7 @@ local function AddPanel(props: {
 	CurrentSettings: Settings.RoadHelperSettings,
 	UpdatedSettings: () -> (),
 	AddSegment: (kind: RoadMath.SegmentKind) -> (),
+	AddIntersection: (throughRoad: boolean) -> (),
 	LayoutOrder: number?,
 })
 	-- With an endpoint selected the add handles in the viewport are the way to
@@ -423,6 +424,50 @@ local function AddPanel(props: {
 					Color = Colors.ACTION_BLUE,
 					OnClick = function()
 						props.AddSegment("Curve")
+					end,
+				}),
+			}),
+		}),
+		IntersectionButtons = e("Frame", {
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			LayoutOrder = nextOrder(),
+		}, {
+			ListLayout = e("UIListLayout", {
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				FillDirection = Enum.FillDirection.Horizontal,
+				Padding = UDim.new(0, 4),
+			}),
+			TButton = e("Frame", {
+				Size = UDim2.new(0.5, -2, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				LayoutOrder = 1,
+			}, {
+				Button = e(OperationButton, {
+					Text = "T Junction",
+					Height = 28,
+					Disabled = false,
+					Color = Colors.ACTION_BLUE,
+					OnClick = function()
+						props.AddIntersection(false)
+					end,
+				}),
+			}),
+			XButton = e("Frame", {
+				Size = UDim2.new(0.5, -2, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				LayoutOrder = 2,
+			}, {
+				Button = e(OperationButton, {
+					Text = "X Junction",
+					Height = 28,
+					Disabled = false,
+					Color = Colors.ACTION_BLUE,
+					OnClick = function()
+						props.AddIntersection(true)
 					end,
 				}),
 			}),
@@ -559,6 +604,7 @@ local function RoadHelperGui(props: {
 	SetSegmentAttribute: (name: string, value: any) -> (),
 	SetSizing: (name: string, value: number) -> (),
 	AddSegment: (kind: RoadMath.SegmentKind) -> (),
+	AddIntersection: (throughRoad: boolean) -> (),
 	CurrentSettings: Settings.RoadHelperSettings,
 	UpdatedSettings: () -> (),
 	HandleAction: (string) -> (),
@@ -601,6 +647,7 @@ local function RoadHelperGui(props: {
 			CurrentSettings = props.CurrentSettings,
 			UpdatedSettings = props.UpdatedSettings,
 			AddSegment = props.AddSegment,
+			AddIntersection = props.AddIntersection,
 			LayoutOrder = nextOrder(),
 		}),
 		PresetsPanel = e(PresetsPanel, {

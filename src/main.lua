@@ -107,6 +107,16 @@ return function(plugin: Plugin, panel: DockWidgetPluginGui, buttonClicked: Signa
 						)
 					end
 				end,
+				AddIntersection = function(throughRoad: boolean)
+					if session then
+						local preset = Presets.ByKey[activeSettings.SelectedPreset]
+						session.AddIntersectionInFrontOfCamera(
+							throughRoad,
+							activeSettings.AlignToWorld,
+							if preset then preset.Attributes else nil
+						)
+					end
+				end,
 				CurrentSettings = activeSettings,
 				UpdatedSettings = updateUI,
 				HandleAction = handleAction,

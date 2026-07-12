@@ -1825,6 +1825,85 @@ local function createRoadSession(plugin: Plugin)
 
 	session.AddInFrontOfCamera = addInFrontOfCamera
 
+	-- Add a free-standing intersection in front of the camera (UI buttons):
+	-- a 4-way crossing or a T junction depending on throughRoad.
+	function session.AddIntersectionInFrontOfCamera(
+		throughRoad: boolean,
+		alignToWorld: boolean?,
+		presetAttributes: { [string]: any }?
+	)
+		local camera = workspace.CurrentCamera
+		if not camera then
+			return
+		end
+		local raycastParams = RaycastParams.new()
+		raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+		raycastParams.FilterDescendantsInstances = {}
+		local result = workspace:Raycast(camera.CFrame.Position, camera.CFrame.LookVector * 500, raycastParams)
+		local target = if result
+			then result.Position
+			else camera.CFrame.Position + camera.CFrame.LookVector * 200
+
+		local template = findTemplate("Intersection", target)
+		local beforeSelection = snapshotSelection()
+		beginRecording("Add Intersection")
+		local newModel: Model?
+		if template then
+			newModel = template.Model:Clone()
+			-- Keep the cloned geometry (see the other add paths)
+		else
+			newModel = createFallbackSegmentModel("Intersection")
+		end
+		if not newModel then
+			finishRecording()
+			warn("RoadHelper: No RoadIntersection available to use as a template.")
+			return
+		end
+		if presetAttributes then
+			-- The preset's road lane layout maps onto both of the
+			-- intersection's axes; everything else copies directly
+			for name, value in presetAttributes do
+				if name ~= "LaneCount" and name ~= "LaneWidth" then
+					newModel:SetAttribute(name, value)
+				end
+			end
+			for _, axis in { "X", "Z" } do
+				newModel:SetAttribute("LaneCount" .. axis, presetAttributes.LaneCount or 2)
+				newModel:SetAttribute("LaneWidth" .. axis, presetAttributes.LaneWidth or 24)
+			end
+		end
+		newModel:SetAttribute("ThroughRoad", throughRoad)
+
+		-- Default size from the lane layout, like extending with one
+		local sidewalk = (newModel:GetAttribute("SidewalkWidth") :: number?) or 8
+		local wZ = ((newModel:GetAttribute("LaneCountZ") :: number?) or 2)
+			* ((newModel:GetAttribute("LaneWidthZ") :: number?) or 24) + 2 * sidewalk
+		local wX = ((newModel:GetAttribute("LaneCountX") :: number?) or 2)
+			* ((newModel:GetAttribute("LaneWidthX") :: number?) or 24) + 2 * sidewalk
+		local laneWidthZ = (newModel:GetAttribute("LaneWidthZ") :: number?) or 24
+		local isPath = ((newModel:GetAttribute("LaneCountZ") :: number?) or 2) == 1 and sidewalk == 0
+		local extra = if isPath then laneWidthZ else 3 * laneWidthZ
+
+		local look = camera.CFrame.LookVector * Vector3.new(1, 0, 1)
+		look = if look.Magnitude > 0.01 then look.Unit else Vector3.zAxis
+		local yaw = math.atan2(look.X, look.Z)
+		if alignToWorld then
+			yaw = math.round(yaw / (math.pi / 2)) * (math.pi / 2)
+		end
+
+		;(newModel :: any).Size = Vector3.new(wZ + extra, 0, wX + extra)
+		newModel:PivotTo(CFrame.Angles(0, yaw, 0) + target)
+		newModel.Parent = if template then template.Model.Parent else workspace
+
+		selectedRef = { Model = newModel, Id = "ZPlus" }
+		if activeRecordingName then
+			pushSelectionHistory(activeRecordingName, beforeSelection, snapshotSelection())
+		end
+		finishRecording()
+		updateDragger()
+		changeSignal:Fire()
+	end
+
 	function session.Destroy()
 		sessionAlive = false
 		heartbeatCn:Disconnect()
