@@ -843,11 +843,11 @@ local function createRoadSession(plugin: Plugin)
 		local newModel: Model?
 		if template then
 			newModel = template.Model:Clone()
-			-- Drop the stale generated geometry; it regenerates for the new size
-			local generated = newModel:FindFirstChild("Generated")
-			if generated then
-				generated:Destroy()
-			end
+			-- Keep the cloned geometry rather than clearing it: the engine
+			-- only regenerates on change events, so a clone whose parameters
+			-- all end up identical to the template's would otherwise stay
+			-- empty. When anything does change, regeneration replaces the
+			-- folder contents anyway.
 		else
 			-- No segment of this kind anywhere: build one from the packaged
 			-- generator templates
@@ -906,10 +906,11 @@ local function createRoadSession(plugin: Plugin)
 		local newModel: Model?
 		if template then
 			newModel = template.Model:Clone()
-			local generated = newModel:FindFirstChild("Generated")
-			if generated then
-				generated:Destroy()
-			end
+			-- Keep the cloned geometry rather than clearing it: the engine
+			-- only regenerates on change events, so a clone whose parameters
+			-- all end up identical to the template's would otherwise stay
+			-- empty. When anything does change, regeneration replaces the
+			-- folder contents anyway.
 		else
 			-- No intersection anywhere: build one from the packaged template
 			newModel = createFallbackSegmentModel("Intersection")
@@ -1285,10 +1286,11 @@ local function createRoadSession(plugin: Plugin)
 		local newModel: Model?
 		if template then
 			newModel = template.Model:Clone()
-			local generated = newModel:FindFirstChild("Generated")
-			if generated then
-				generated:Destroy()
-			end
+			-- Keep the cloned geometry rather than clearing it: the engine
+			-- only regenerates on change events, so a clone whose parameters
+			-- all end up identical to the template's would otherwise stay
+			-- empty. When anything does change, regeneration replaces the
+			-- folder contents anyway.
 		else
 			newModel = createFallbackSegmentModel(kind)
 		end
