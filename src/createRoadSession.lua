@@ -60,6 +60,7 @@ export type SelectionState = {
 	Grade: number,
 	Bank: number,
 	Blend: boolean,
+	HaveLaneMarkings: boolean,
 	TextureLaneMarkings: boolean,
 	MaxAngle: number,
 	LaneCount: number,
@@ -1691,6 +1692,7 @@ local function createRoadSession(plugin: Plugin)
 			Grade = RoadMath.getAdjustValue(selected, "Grade"),
 			Bank = RoadMath.getAdjustValue(selected, "Bank"),
 			Blend = selected.Segment.Model:GetAttribute("Blend") == true,
+			HaveLaneMarkings = selected.Segment.Model:GetAttribute("HaveLaneMarkings") ~= false,
 			TextureLaneMarkings = selected.Segment.Model:GetAttribute("TextureLaneMarkings") == true,
 			MaxAngle = (selected.Segment.Model:GetAttribute("MaxAngle") :: number?) or 10,
 			-- For intersections, the lane layout of the selected end's road
@@ -1700,6 +1702,25 @@ local function createRoadSession(plugin: Plugin)
 			IntersectionAngle = (selected.Segment.Model:GetAttribute("IntersectionAngle") :: number?) or 90,
 			CornerRadius = math.round((selected.Segment.Size.X - selected.Segment.Width) * 50) / 100,
 		} :: any
+	end
+
+	-- Set the lane marking mode of the selected endpoint's segment. "None"
+	-- leaves TextureLaneMarkings untouched since it isn't relevant then.
+	function session.SetLaneMarkings(mode: string)
+		local selected = getSelectedEndpoint()
+		if not selected then
+			return
+		end
+		local model = selected.Segment.Model
+		beginRecording("Edit Road")
+		if mode == "None" then
+			model:SetAttribute("HaveLaneMarkings", false)
+		else
+			model:SetAttribute("HaveLaneMarkings", true)
+			model:SetAttribute("TextureLaneMarkings", mode == "Textured")
+		end
+		finishRecording()
+		changeSignal:Fire()
 	end
 
 	-- Set a plain attribute of the selected endpoint's segment (from the UI)

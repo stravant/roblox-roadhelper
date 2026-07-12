@@ -230,24 +230,64 @@ local function DetailPanel(props: {
 		Padding = UDim.new(0, 6),
 		LayoutOrder = props.LayoutOrder,
 	}, {
-		TexturedMarkings = e(HelpGui.WithHelpIcon, {
-			Help = e(HelpGui.BasicTooltip, {
-				HelpRichText = "Draw lane markings as textures, with properly dashed divider lines. Untextured markings are plain solid strips.",
-			}),
-			LayoutOrder = 1,
-			Subject = e(Checkbox, {
-				Label = "Textured lane markings",
-				Checked = state.TextureLaneMarkings,
-				Changed = function(checked: boolean)
-					props.SetSegmentAttribute("TextureLaneMarkings", checked)
-				end,
-			}),
-		}),
 		Chips = e(HelpGui.WithHelpIcon, {
 			Help = e(HelpGui.BasicTooltip, {
 				HelpRichText = "How finely the road surface is tessellated (how many degrees of turn or twist each row of parts may span). Higher detail looks smoother but uses more parts.",
 			}),
 			LayoutOrder = 2,
+			Subject = e("Frame", {
+				Size = UDim2.new(1, 0, 0, 0),
+				BorderSizePixel = 0,
+				BackgroundColor3 = Colors.ACTION_BLUE,
+				AutomaticSize = Enum.AutomaticSize.Y,
+			}, chips),
+		}),
+	})
+end
+
+local LANE_MARKING_MODES = { "None", "Parts", "Textured" }
+
+local function LaneMarkingsPanel(props: {
+	SelectionState: createRoadSession.SelectionState,
+	SetLaneMarkings: (mode: string) -> (),
+	LayoutOrder: number?,
+})
+	local state = props.SelectionState
+	if state.Kind == "none" then
+		return nil :: any
+	end
+	local current = if not (state :: any).HaveLaneMarkings
+		then "None"
+		elseif state.TextureLaneMarkings then "Textured"
+		else "Parts"
+	local chips: { [string]: any } = {
+		ListLayout = e("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Left,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		Corner = e("UICorner", {
+			CornerRadius = UDim.new(0, 4),
+		}),
+	}
+	for index, mode in LANE_MARKING_MODES do
+		chips[mode] = e(ChipForToggle, {
+			Text = mode,
+			IsCurrent = current == mode,
+			LayoutOrder = index,
+			OnClick = function()
+				props.SetLaneMarkings(mode)
+			end,
+		})
+	end
+	return e(SubPanel, {
+		Title = "Lane Markings",
+		LayoutOrder = props.LayoutOrder,
+	}, {
+		Chips = e(HelpGui.WithHelpIcon, {
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "None hides the lane markings entirely. Parts draws them as solid colored strips. Textured paints them with textures, including properly dashed divider lines, at a small perf cost.",
+			}),
 			Subject = e("Frame", {
 				Size = UDim2.new(1, 0, 0, 0),
 				BorderSizePixel = 0,
@@ -602,6 +642,7 @@ local function RoadHelperGui(props: {
 	SetAdjustValue: (axis: RoadMath.AdjustAxis, value: number) -> (),
 	SetBlend: (value: boolean) -> (),
 	SetSegmentAttribute: (name: string, value: any) -> (),
+	SetLaneMarkings: (mode: string) -> (),
 	SetSizing: (name: string, value: number) -> (),
 	AddSegment: (kind: RoadMath.SegmentKind) -> (),
 	AddIntersection: (throughRoad: boolean) -> (),
@@ -635,6 +676,11 @@ local function RoadHelperGui(props: {
 		DetailPanel = e(DetailPanel, {
 			SelectionState = props.SelectionState,
 			SetSegmentAttribute = props.SetSegmentAttribute,
+			LayoutOrder = nextOrder(),
+		}),
+		LaneMarkingsPanel = e(LaneMarkingsPanel, {
+			SelectionState = props.SelectionState,
+			SetLaneMarkings = props.SetLaneMarkings,
 			LayoutOrder = nextOrder(),
 		}),
 		SizingPanel = e(SizingPanel, {

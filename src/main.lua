@@ -92,6 +92,11 @@ return function(plugin: Plugin, panel: DockWidgetPluginGui, buttonClicked: Signa
 						session.SetSegmentAttribute(name, value)
 					end
 				end,
+				SetLaneMarkings = function(mode: string)
+					if session then
+						session.SetLaneMarkings(mode)
+					end
+				end,
 				SetSizing = function(name: string, value: number)
 					if session then
 						session.SetSizing(name, value)
