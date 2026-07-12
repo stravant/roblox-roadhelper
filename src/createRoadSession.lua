@@ -885,6 +885,80 @@ local function createRoadSession(plugin: Plugin)
 		changeSignal:Fire()
 	end
 
+	--------------------------------------------------------------------------
+	-- Whole-intersection transforms
+	--------------------------------------------------------------------------
+
+	-- Moving/rotating an intersection moves the model itself and drags every
+	-- connected road end along so the joints stay sealed.
+	type IntersectionConnection = {
+		Ref: EndpointRef,
+		EndId: RoadMath.EndpointId,
+	}
+	local intersectionDrag: {
+		Model: Model,
+		StartPivot: CFrame,
+		Connected: { IntersectionConnection },
+	}? = nil
+
+	local function startIntersectionTransform()
+		local selected = getSelectedEndpoint()
+		if not selected or selected.Segment.Kind ~= "Intersection" then
+			return
+		end
+		local connected: { IntersectionConnection } = {}
+		for _, endpoint in RoadMath.allEndpoints(selected.Segment) do
+			local partner = partnerOfEndpoint(endpoint)
+			if partner and partner.Segment.Kind ~= "Intersection" then
+				table.insert(connected, {
+					Ref = { Model = partner.Segment.Model, Id = partner.Id },
+					EndId = endpoint.Id,
+				})
+			end
+		end
+		intersectionDrag = {
+			Model = selected.Segment.Model,
+			StartPivot = selected.Segment.Model:GetPivot(),
+			Connected = connected,
+		}
+		gestureActive = true
+		beginRecording("Move Intersection")
+	end
+
+	local function applyIntersectionTransform(pivot: CFrame)
+		local state = intersectionDrag
+		if not state then
+			return
+		end
+		state.Model:PivotTo(pivot)
+		local info = RoadMath.getSegmentInfo(state.Model)
+		if info then
+			-- Re-seat each connected road end onto its (moved) exit
+			for _, conn in state.Connected do
+				local exit = RoadMath.getEndpoint(info, conn.EndId)
+				local roadInfo = RoadMath.getSegmentInfo(conn.Ref.Model)
+				if roadInfo then
+					local ok, err = pcall(function()
+						applySolutionToRef(conn.Ref, RoadMath.solveMove(roadInfo, conn.Ref.Id, exit.WorldCFrame.Position))
+					end)
+					if not ok then
+						warn("RoadHelper: Connected road follow failed: " .. tostring(err))
+					end
+					alignEndFaceToMate(conn.Ref, exit)
+				end
+			end
+		end
+		changeSignal:Fire()
+	end
+
+	local function endIntersectionTransform()
+		intersectionDrag = nil
+		finishRecording()
+		gestureActive = false
+		updateDragger()
+		changeSignal:Fire()
+	end
+
 	-- Add a free-standing segment in front of the camera (UI buttons). When
 	-- presetAttributes is given the new segment takes that appearance instead
 	-- of inheriting one from the selection or a nearby template.
@@ -1037,6 +1111,67 @@ local function createRoadSession(plugin: Plugin)
 			StartRotate = startRotate,
 			ApplyRotate = applyRotate,
 			EndRotate = endRotate,
+		}),
+		-- Whole-intersection move (arrows + free drag) and yaw ring, shown at
+		-- the intersection's centre when one of its ends is selected
+		EndpointMoveHandles.new(draggerContext, {
+			GetEndpointCFrame = function()
+				local endpoint = getSelectedEndpoint()
+				if endpoint and endpoint.Segment.Kind == "Intersection" then
+					return endpoint.Segment.Model:GetPivot()
+				end
+				return nil
+			end,
+			GetDragExclusions = function(): { Instance }
+				local exclusions: { Instance } = {}
+				local selected = getSelectedEndpoint()
+				if selected and selected.Segment.Kind == "Intersection" then
+					table.insert(exclusions, selected.Segment.Model)
+					local state = intersectionDrag
+					if state then
+						for _, conn in state.Connected do
+							table.insert(exclusions, conn.Ref.Model)
+						end
+					else
+						for _, endpoint in RoadMath.allEndpoints(selected.Segment) do
+							local partner = partnerOfEndpoint(endpoint)
+							if partner then
+								table.insert(exclusions, partner.Segment.Model)
+							end
+						end
+					end
+				end
+				return exclusions
+			end,
+			StartMove = startIntersectionTransform,
+			ApplyMove = function(newWorldPosition: Vector3)
+				local state = intersectionDrag
+				if state then
+					applyIntersectionTransform(state.StartPivot.Rotation + newWorldPosition)
+				end
+			end,
+			EndMove = endIntersectionTransform,
+		}),
+		EndpointRotateHandles.new(draggerContext, {
+			Axes = { "Dir" },
+			GetEndpointCFrame = function()
+				local endpoint = getSelectedEndpoint()
+				if endpoint and endpoint.Segment.Kind == "Intersection" then
+					return endpoint.Segment.Model:GetPivot()
+				end
+				return nil
+			end,
+			StartRotate = startIntersectionTransform,
+			ApplyRotate = function(axis: RoadMath.AdjustAxis, deltaDegrees: number)
+				local state = intersectionDrag
+				if not state then
+					return
+				end
+				local position = state.StartPivot.Position
+				local yaw = CFrame.fromAxisAngle(Vector3.yAxis, math.rad(deltaDegrees))
+				applyIntersectionTransform(CFrame.new(position) * yaw * state.StartPivot.Rotation)
+			end,
+			EndRotate = endIntersectionTransform,
 		}),
 		AddHandles.new(draggerContext, {
 			GetOpenEndpoint = function()

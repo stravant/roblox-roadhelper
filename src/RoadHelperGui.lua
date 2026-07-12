@@ -43,10 +43,10 @@ local function describeStatus(state: createRoadSession.SelectionState): string
 	elseif (state :: any).SegmentKind == "Intersection" then
 		if state.Kind == "open" then
 			return "<b>Intersection exit selected.</b>"
-				.. "\nDrag one of the cones to extend it with a new road segment."
+				.. "\nDrag a cone to extend this exit with a new road segment. The central handles move or rotate the whole intersection, and connected roads follow."
 		else
 			return "<b>Connected intersection exit selected.</b>"
-				.. "\nSelect the joined road segment's end instead to edit the joint."
+				.. "\nThe central handles move or rotate the whole intersection, with connected roads following. Select the joined road's end to edit the joint itself."
 		end
 	elseif state.Kind == "open" then
 		return "<b>Open endpoint selected.</b>"

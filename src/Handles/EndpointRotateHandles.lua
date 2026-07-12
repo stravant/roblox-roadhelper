@@ -83,6 +83,8 @@ EndpointRotateHandles.__index = EndpointRotateHandles
 
 export type Props = {
 	GetEndpointCFrame: () -> CFrame?,
+	-- Restrict to a subset of the Dir/Grade/Bank rings (default: all three)
+	Axes: { AdjustAxis }?,
 	StartRotate: () -> (),
 	ApplyRotate: (axis: AdjustAxis, deltaDegrees: number) -> (),
 	EndRotate: () -> (),
@@ -116,6 +118,9 @@ function EndpointRotateHandles:_updateHandles()
 	local scale = self._draggerContext:getHandleScale(frame.Position)
 	local handles = {}
 	for handleId, handleDef in RotateHandleDefinitions do
+		if self._props.Axes and not table.find(self._props.Axes, handleId :: any) then
+			continue
+		end
 		handles[handleId] = {
 			HandleCFrame = frame * handleDef.Offset,
 			Color = handleDef.Color,
