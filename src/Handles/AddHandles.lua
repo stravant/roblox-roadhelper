@@ -126,17 +126,27 @@ function AddHandles:render(hoveredHandleId)
 		local hovered = handleId == hoveredHandleId or handleId == self._draggingHandleId
 		local size = MARKER_SIZE * handle.Scale * (if hovered then 1.25 else 1)
 		if handle.Turn == "Intersection" then
-			-- A flat cube reading as a crossing rather than a direction
-			children[handleId] = Roact.createElement("BoxHandleAdornment", {
-				Adornee = workspace.Terrain,
-				CFrame = CFrame.lookAlong(handle.Position, handle.Outward),
-				Size = Vector3.new(size * 1.4, size * 0.55, size * 1.4),
-				Color3 = handle.Color,
-				Transparency = if hovered then 0 else 0.25,
-				AlwaysOnTop = false,
-				Shading = Enum.AdornShading.XRay,
-				ZIndex = 0,
-			})
+			-- Three cones fanning left/ahead/right from a shared base,
+			-- reading as a branching crossing
+			local coneSize = size * 0.75
+			local dirs = {
+				handle.Outward,
+				(handle.Outward + handle.Right).Unit,
+				(handle.Outward - handle.Right).Unit,
+			}
+			for i, dir in dirs do
+				children[handleId .. i] = Roact.createElement("ConeHandleAdornment", {
+					Adornee = workspace.Terrain,
+					CFrame = CFrame.lookAlong(handle.Position, dir),
+					Height = coneSize * 1.5,
+					Radius = coneSize * 0.45,
+					Color3 = handle.Color,
+					Transparency = if hovered then 0 else 0.25,
+					AlwaysOnTop = false,
+					Shading = Enum.AdornShading.XRay,
+					ZIndex = 0,
+				})
+			end
 			continue
 		end
 		local look: Vector3
