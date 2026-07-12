@@ -978,15 +978,15 @@ local function createRoadSession(plugin: Plugin)
 		newModel:SetAttribute("IntersectionAngle", 90)
 		newModel:SetAttribute("ThroughRoad", true)
 
-		-- Sized from the lane layout: the road width plus three extra lanes'
-		-- worth of space for the corner turn radius. Path-like roads (a
-		-- single lane with no sidewalks, e.g. dirt/cobblestone/pebble paths)
-		-- get much tighter corners: one lane's worth.
+		-- Sized from the lane layout: the road width plus a default 16 stud
+		-- corner radius of extra space. Path-like roads (a single lane with
+		-- no sidewalks, e.g. dirt/cobblestone/pebble paths) get tighter
+		-- corners: half a lane's radius.
 		local width = RoadMath.endpointWidth(openEnd)
 		local laneWidthNumber = if typeof(laneWidth) == "number" then laneWidth else 24
 		local sidewalk = sourceModel:GetAttribute("SidewalkWidth")
 		local isPath = laneCount == 1 and sidewalk == 0
-		local boxSize = width + (if isPath then laneWidthNumber else 3 * laneWidthNumber)
+		local boxSize = width + (if isPath then laneWidthNumber else 32)
 		local size = Vector3.new(boxSize, 0, boxSize);
 		(newModel :: any).Size = size
 		-- ZMinus (local -Z) exit opposes the road end's actual face
@@ -1882,7 +1882,8 @@ local function createRoadSession(plugin: Plugin)
 			* ((newModel:GetAttribute("LaneWidthX") :: number?) or 24) + 2 * sidewalk
 		local laneWidthZ = (newModel:GetAttribute("LaneWidthZ") :: number?) or 24
 		local isPath = ((newModel:GetAttribute("LaneCountZ") :: number?) or 2) == 1 and sidewalk == 0
-		local extra = if isPath then laneWidthZ else 3 * laneWidthZ
+		-- Default 16 stud corner radius for roads, half a lane for paths
+		local extra = if isPath then laneWidthZ else 32
 
 		local look = camera.CFrame.LookVector * Vector3.new(1, 0, 1)
 		look = if look.Magnitude > 0.01 then look.Unit else Vector3.zAxis
