@@ -319,19 +319,19 @@ local function SizingPanel(props: {
 				end,
 			}),
 		}),
-		ExtraMarginInput = if (state :: any).SegmentKind == "Intersection"
+		CornerRadiusInput = if (state :: any).SegmentKind == "Intersection"
 			then e(HelpGui.WithHelpIcon, {
 				Help = e(HelpGui.BasicTooltip, {
-					HelpRichText = "Bounding box size beyond what the roads' widths require. More margin means more open pavement and smoother corner curves.",
+					HelpRichText = "The corner curve radius, controlled through the bounding box size beyond what the roads' widths require. Exact for 90 degree intersections; skewed corners vary around it.",
 				}),
 				LayoutOrder = 4,
 				Subject = e(NumberInput, {
-					Label = "Extra Margin",
-					Value = (state :: any).ExtraMargin,
+					Label = "Corner Radius",
+					Value = (state :: any).CornerRadius,
 					ValueEntered = function(value: number): number?
-						local margin = math.max(value, 0)
-						props.SetSizing("ExtraMargin", margin)
-						return margin
+						local radius = math.max(value, 0)
+						props.SetSizing("CornerRadius", radius)
+						return radius
 					end,
 				}),
 			})

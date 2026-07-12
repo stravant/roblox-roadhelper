@@ -66,8 +66,9 @@ export type SelectionState = {
 	LaneWidth: number,
 	SidewalkWidth: number,
 	IntersectionAngle: number,
-	-- Intersection bounding box size in excess of the roads' widths
-	ExtraMargin: number,
+	-- Nominal corner curve radius of an intersection (half the bounding box
+	-- size in excess of the roads' widths; exact at 90 degrees)
+	CornerRadius: number,
 }
 
 local function createFixedSelection(onCleared: () -> ())
@@ -1690,7 +1691,7 @@ local function createRoadSession(plugin: Plugin)
 			LaneWidth = (selected.Segment.Model:GetAttribute("LaneWidth" .. laneAxisSuffix) :: number?) or 24,
 			SidewalkWidth = (selected.Segment.Model:GetAttribute("SidewalkWidth") :: number?) or 8,
 			IntersectionAngle = (selected.Segment.Model:GetAttribute("IntersectionAngle") :: number?) or 90,
-			ExtraMargin = math.round((selected.Segment.Size.X - selected.Segment.Width) * 100) / 100,
+			CornerRadius = math.round((selected.Segment.Size.X - selected.Segment.Width) * 50) / 100,
 		} :: any
 	end
 
@@ -1739,10 +1740,11 @@ local function createRoadSession(plugin: Plugin)
 			end
 			local connections = collectIntersectionConnections(selected.Segment)
 			beginRecording("Resize Intersection")
-			if name == "ExtraMargin" then
-				-- The excess box size beyond the roads' widths, applied to
-				-- both axes symmetrically
-				local margin = math.max(value, 0)
+			if name == "CornerRadius" then
+				-- The corner curve radius maps to box size: each side of a
+				-- road gets one radius' worth of excess space, so the corner
+				-- fillets come out at (about) the requested radius
+				local margin = 2 * math.max(value, 0)
 				local wZ, wX = roadWidths()
 				local size = (model :: any).Size :: Vector3
 				;(model :: any).Size = Vector3.new(wZ + margin, size.Y, wX + margin)
