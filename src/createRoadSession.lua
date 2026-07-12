@@ -577,9 +577,11 @@ local function createRoadSession(plugin: Plugin)
 		end
 	end
 
-	-- When a dragged road end snaps onto an intersection's (possibly angled)
-	-- open end, rotate the road's end face to mate flush: its Dir adjust
-	-- takes up the intersection angle and its grade/bank flatten out.
+	-- When a dragged road end snaps onto another open end, rotate the road's
+	-- end face to mate flush: its Dir adjust takes up the yaw between its
+	-- nominal frame and the mate's actual face (however the two bounding
+	-- boxes are aligned), and its grade/bank match the mate's (zero for the
+	-- flat intersections).
 	local function alignEndFaceToMate(ref: EndpointRef, mate: RoadMath.Endpoint)
 		local info = RoadMath.getSegmentInfo(ref.Model)
 		if not info or info.Kind == "Intersection" then
@@ -588,7 +590,7 @@ local function createRoadSession(plugin: Plugin)
 		local endpoint = RoadMath.getEndpoint(info, ref.Id)
 		local up = endpoint.WorldCFrame.UpVector
 		local nominal = endpoint.WorldCFrame.LookVector
-		local desired = -mate.WorldCFrame.LookVector
+		local desired = -RoadMath.actualOutwardDirection(mate)
 		local n = nominal - up * nominal:Dot(up)
 		local d = desired - up * desired:Dot(up)
 		if n.Magnitude < 1e-4 or d.Magnitude < 1e-4 then
@@ -598,8 +600,14 @@ local function createRoadSession(plugin: Plugin)
 		local angle = math.deg(math.atan2(n:Cross(d):Dot(up), n:Dot(d)))
 		angle = math.round(angle * 100) / 100
 		setAdjustAttribute(ref.Model, ref.Id, "Dir", angle / RoadMath.flipFactor(info, "Dir"))
-		setAdjustAttribute(ref.Model, ref.Id, "Grade", 0)
-		setAdjustAttribute(ref.Model, ref.Id, "Bank", 0)
+		if mate.Segment.Kind == "Intersection" then
+			setAdjustAttribute(ref.Model, ref.Id, "Grade", 0)
+			setAdjustAttribute(ref.Model, ref.Id, "Bank", 0)
+		else
+			local matching = RoadMath.matchingAdjust(mate, ref.Id)
+			setAdjustAttribute(ref.Model, ref.Id, "Grade", matching.Grade / RoadMath.flipFactor(info, "Grade"))
+			setAdjustAttribute(ref.Model, ref.Id, "Bank", matching.Bank)
+		end
 	end
 
 	-- A road end joined to one of an intersection's exits, and which exit
@@ -741,7 +749,7 @@ local function createRoadSession(plugin: Plugin)
 		end
 		local dragged = moveTargets[1]
 		if dragged and moveOriginalAdjust and not moveIntersection then
-			if snapMate and snapMate.Segment.Kind == "Intersection" then
+			if snapMate then
 				alignEndFaceToMate(dragged, snapMate)
 			else
 				restoreAdjust(dragged, moveOriginalAdjust)
@@ -1075,7 +1083,7 @@ local function createRoadSession(plugin: Plugin)
 			end
 		end
 		if addDragOriginalAdjust then
-			if snapMate and snapMate.Segment.Kind == "Intersection" then
+			if snapMate then
 				alignEndFaceToMate(ref, snapMate)
 			else
 				restoreAdjust(ref, addDragOriginalAdjust)
