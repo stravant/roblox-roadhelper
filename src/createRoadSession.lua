@@ -1190,11 +1190,15 @@ local function createRoadSession(plugin: Plugin)
 		EndpointRotateHandles.new(draggerContext, {
 			Axes = { "Dir" },
 			View = PartialRotateHandleView,
-			RadiusOffset = 0.35,
+			-- Twice the main ring's radius so it reads separately
+			RadiusOffset = 5.2,
+			Color = Color3.fromRGB(255, 200, 40),
 			GetAngleOffset = function()
 				local endpoint = getSelectedEndpoint()
 				if endpoint and endpoint.Segment.Kind == "Intersection" then
-					return (endpoint.Segment.Angle or math.pi / 2) + math.pi / 2
+					-- The view's offset runs opposite to the world yaw of the
+					-- X road, mirrored about the resting 90 degree position
+					return 3 * math.pi / 2 - (endpoint.Segment.Angle or math.pi / 2)
 				end
 				return 0
 			end,

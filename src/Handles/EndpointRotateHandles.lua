@@ -92,6 +92,8 @@ export type Props = {
 	GetAngleOffset: (() -> number)?,
 	-- Override the per-axis radius stacking offset
 	RadiusOffset: number?,
+	-- Override the per-axis ring color
+	Color: Color3?,
 	StartRotate: () -> (),
 	ApplyRotate: (axis: AdjustAxis, deltaDegrees: number) -> (),
 	EndRotate: () -> (),
@@ -131,7 +133,7 @@ function EndpointRotateHandles:_updateHandles()
 		end
 		handles[handleId] = {
 			HandleCFrame = frame * handleDef.Offset,
-			Color = handleDef.Color,
+			Color = self._props.Color or handleDef.Color,
 			RadiusOffset = self._props.RadiusOffset or handleDef.RadiusOffset,
 			AngleOffset = angleOffset,
 			Scale = scale * 0.6,
