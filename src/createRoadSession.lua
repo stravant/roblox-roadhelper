@@ -129,6 +129,7 @@ end
 local GENERATOR_MODULE_NAMES: { [RoadMath.SegmentKind]: string } = {
 	Straight = "StraightRoadGenerator",
 	Curve = "CurveRoadGenerator",
+	Intersection = "RoadIntersectionGenerator",
 }
 
 -- Build a brand new segment from the generator templates packaged inside the
@@ -142,7 +143,10 @@ local function createFallbackSegmentModel(kind: RoadMath.SegmentKind): Model?
 		warn("RoadHelper: This Studio version doesn't support creating ProceduralModels.")
 		return nil
 	end
-	model.Name = if kind == "Straight" then "StraightRoad" else "CurveRoad"
+	model.Name = if kind == "Straight"
+		then "StraightRoad"
+		elseif kind == "Curve" then "CurveRoad"
+		else "RoadIntersection"
 	local generator = Templates:FindFirstChild(GENERATOR_MODULE_NAMES[kind])
 	if generator then
 		local generatorCopy = generator:Clone()
@@ -899,14 +903,20 @@ local function createRoadSession(plugin: Plugin)
 	local function createJoinedIntersection(openEnd: RoadMath.Endpoint): Model?
 		local sourceModel = openEnd.Segment.Model
 		local template = findTemplate("Intersection", openEnd.WorldCFrame.Position)
-		if not template then
-			warn("RoadHelper: No RoadIntersection found in the place to use as a template.")
-			return nil
+		local newModel: Model?
+		if template then
+			newModel = template.Model:Clone()
+			local generated = newModel:FindFirstChild("Generated")
+			if generated then
+				generated:Destroy()
+			end
+		else
+			-- No intersection anywhere: build one from the packaged template
+			newModel = createFallbackSegmentModel("Intersection")
 		end
-		local newModel = template.Model:Clone()
-		local generated = newModel:FindFirstChild("Generated")
-		if generated then
-			generated:Destroy()
+		if not newModel then
+			warn("RoadHelper: No RoadIntersection available to use as a template.")
+			return nil
 		end
 		for name, value in sourceModel:GetAttributes() do
 			if not GEOMETRY_ATTRIBUTES[name] then

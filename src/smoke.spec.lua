@@ -21,5 +21,6 @@ return function(t: TestTypes.TestContext)
 		-- The packaged fallback generator templates must at least load
 		require("./Templates/StraightRoadGenerator")
 		require("./Templates/CurveRoadGenerator")
+		require("./Templates/RoadIntersectionGenerator")
 	end)
 end
