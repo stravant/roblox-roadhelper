@@ -31,6 +31,7 @@ local DraggerToolComponent = (require :: any)(DraggerFramework.DraggerTools.Drag
 
 local RoadMath = require("./RoadMath")
 local EndpointPickHandles = require("./Handles/EndpointPickHandles")
+local DeleteExitHandles = require("./Handles/DeleteExitHandles")
 local PartialRotateHandleView = require("./Dragger/PartialRotateHandleView")
 local EndpointMoveHandles = require("./Handles/EndpointMoveHandles")
 local EndpointRotateHandles = require("./Handles/EndpointRotateHandles")
@@ -1012,6 +1013,85 @@ local function createRoadSession(plugin: Plugin)
 		changeSignal:Fire()
 	end
 
+	-- Removing an open exit of a 4-way intersection turns it into a T
+	-- junction. The T generator always drops the -X stub, so the model is
+	-- rotated by the right yaw (and the two roads' roles swapped when a Z
+	-- exit is removed) such that the removed exit lands on -X. Every
+	-- surviving exit keeps its exact world position and direction through
+	-- the transform, so connected roads stay sealed untouched.
+	local function getDeletableExits(): { RoadMath.Endpoint }
+		local selected = getSelectedEndpoint()
+		if not selected
+			or selected.Segment.Kind ~= "Intersection"
+			or selected.Segment.ThroughRoad == false
+		then
+			return {}
+		end
+		local exits = {}
+		for _, endpoint in RoadMath.allEndpoints(selected.Segment) do
+			if not partnerOfEndpoint(endpoint) then
+				table.insert(exits, endpoint)
+			end
+		end
+		return exits
+	end
+
+	local function deleteExit(exit: RoadMath.Endpoint)
+		local model = exit.Segment.Model
+		local selectedBefore = getSelectedEndpoint()
+		local selectedPosition = if selectedBefore then selectedBefore.WorldCFrame.Position else nil
+		gestureActive = true
+		beginRecording("Make T Junction")
+		local pivot = model:GetPivot()
+		local size = (model :: any).Size :: Vector3
+		local angleValue = model:GetAttribute("IntersectionAngle")
+		local angleDeg = if typeof(angleValue) == "number" then angleValue else 90
+		local yaw = 0
+		if exit.Id == "XPlus" then
+			yaw = 180
+		elseif exit.Id == "ZPlus" then
+			yaw = angleDeg
+		elseif exit.Id == "ZMinus" then
+			yaw = angleDeg - 180
+		end
+		if exit.Id == "ZPlus" or exit.Id == "ZMinus" then
+			-- The X road becomes the (straight) crossbar and the Z road the
+			-- angled stem: swap the per-road lane configs and box extents,
+			-- and mirror the angle
+			local countX = model:GetAttribute("LaneCountX")
+			local countZ = model:GetAttribute("LaneCountZ")
+			local widthX = model:GetAttribute("LaneWidthX")
+			local widthZ = model:GetAttribute("LaneWidthZ")
+			model:SetAttribute("LaneCountX", countZ or 2)
+			model:SetAttribute("LaneCountZ", countX or 2)
+			model:SetAttribute("LaneWidthX", widthZ or 24)
+			model:SetAttribute("LaneWidthZ", widthX or 24)
+			model:SetAttribute("IntersectionAngle", 180 - angleDeg);
+			(model :: any).Size = Vector3.new(size.Z, size.Y, size.X)
+		end
+		model:SetAttribute("ThroughRoad", false)
+		if yaw ~= 0 then
+			model:PivotTo(CFrame.new(pivot.Position) * pivot.Rotation * CFrame.Angles(0, math.rad(yaw), 0))
+		end
+		finishRecording()
+		-- Endpoint ids were reshuffled by the transform: re-select whichever
+		-- surviving end is where the old selection was (or clear it if the
+		-- selected exit is the one that was deleted)
+		selectedRef = nil
+		local newInfo = RoadMath.getSegmentInfo(model)
+		if newInfo and selectedPosition then
+			for _, endpoint in RoadMath.allEndpoints(newInfo) do
+				if (endpoint.WorldCFrame.Position - selectedPosition).Magnitude < 1 then
+					selectedRef = { Model = model, Id = endpoint.Id }
+					break
+				end
+			end
+		end
+		gestureActive = false
+		updateDragger()
+		changeSignal:Fire()
+	end
+
 	local function endIntersectionTransform()
 		intersectionDrag = nil
 		finishRecording()
@@ -1282,6 +1362,10 @@ local function createRoadSession(plugin: Plugin)
 				changeSignal:Fire()
 			end,
 			EndRotate = endIntersectionTransform,
+		}),
+		DeleteExitHandles.new(draggerContext, {
+			GetDeletableExits = getDeletableExits,
+			DeleteExit = deleteExit,
 		}),
 		AddHandles.new(draggerContext, {
 			GetOpenEndpoint = function()
