@@ -85,6 +85,13 @@ export type Props = {
 	GetEndpointCFrame: () -> CFrame?,
 	-- Restrict to a subset of the Dir/Grade/Bank rings (default: all three)
 	Axes: { AdjustAxis }?,
+	-- Alternate handle view component (e.g. PartialRotateHandleView); must
+	-- expose .hitTest(props, mouseRay) like RotateHandleView does
+	View: any?,
+	-- Where the partial view's grabber sits around the ring (radians)
+	GetAngleOffset: (() -> number)?,
+	-- Override the per-axis radius stacking offset
+	RadiusOffset: number?,
 	StartRotate: () -> (),
 	ApplyRotate: (axis: AdjustAxis, deltaDegrees: number) -> (),
 	EndRotate: () -> (),
@@ -116,6 +123,7 @@ function EndpointRotateHandles:_updateHandles()
 		return
 	end
 	local scale = self._draggerContext:getHandleScale(frame.Position)
+	local angleOffset = if self._props.GetAngleOffset then self._props.GetAngleOffset() else 0
 	local handles = {}
 	for handleId, handleDef in RotateHandleDefinitions do
 		if self._props.Axes and not table.find(self._props.Axes, handleId :: any) then
@@ -124,7 +132,8 @@ function EndpointRotateHandles:_updateHandles()
 		handles[handleId] = {
 			HandleCFrame = frame * handleDef.Offset,
 			Color = handleDef.Color,
-			RadiusOffset = handleDef.RadiusOffset,
+			RadiusOffset = self._props.RadiusOffset or handleDef.RadiusOffset,
+			AngleOffset = angleOffset,
 			Scale = scale * 0.6,
 		}
 	end
@@ -132,9 +141,10 @@ function EndpointRotateHandles:_updateHandles()
 end
 
 function EndpointRotateHandles:hitTest(mouseRay, ignoreExtraThreshold)
+	local View = self._props.View or RotateHandleView
 	local closestHandleId, closestHandleDistance = nil, math.huge
 	for handleId, handleProps in self._handles do
-		local distance = RotateHandleView.hitTest(handleProps, mouseRay)
+		local distance = View.hitTest(handleProps, mouseRay)
 		if distance and distance < closestHandleDistance then
 			closestHandleDistance = distance
 			closestHandleId = handleId
@@ -152,11 +162,12 @@ function EndpointRotateHandles:render(hoveredHandleId)
 		tickAngle = math.rad(increment)
 	end
 
+	local View = self._props.View or RotateHandleView
 	if self._draggingHandleId and self._handles[self._draggingHandleId] then
 		local handleProps = self._handles[self._draggingHandleId]
 		local HALF_PI = math.pi / 2
 		local snapStartAngle = math.floor(self._startAngle / HALF_PI + 0.5) * HALF_PI
-		children[self._draggingHandleId] = Roact.createElement(RotateHandleView, {
+		children[self._draggingHandleId] = Roact.createElement(View, {
 			HandleCFrame = handleProps.HandleCFrame,
 			Color = handleProps.Color,
 			-- The view sweeps from StartAngle to EndAngle; our delta is the raw
@@ -166,6 +177,7 @@ function EndpointRotateHandles:render(hoveredHandleId)
 			Scale = handleProps.Scale,
 			Hovered = false,
 			RadiusOffset = handleProps.RadiusOffset,
+			AngleOffset = handleProps.AngleOffset,
 			TickAngle = tickAngle,
 		})
 	else
@@ -178,12 +190,13 @@ function EndpointRotateHandles:render(hoveredHandleId)
 			else
 				color = Colors.makeDimmed(color)
 			end
-			children[handleId] = Roact.createElement(RotateHandleView, {
+			children[handleId] = Roact.createElement(View, {
 				HandleCFrame = handleProps.HandleCFrame,
 				Color = color,
 				Scale = handleProps.Scale,
 				Hovered = hovered,
 				RadiusOffset = handleProps.RadiusOffset,
+				AngleOffset = handleProps.AngleOffset,
 				TickAngle = tickAngleToUse,
 			})
 		end

@@ -31,6 +31,7 @@ local DraggerToolComponent = (require :: any)(DraggerFramework.DraggerTools.Drag
 
 local RoadMath = require("./RoadMath")
 local EndpointPickHandles = require("./Handles/EndpointPickHandles")
+local PartialRotateHandleView = require("./Dragger/PartialRotateHandleView")
 local EndpointMoveHandles = require("./Handles/EndpointMoveHandles")
 local EndpointRotateHandles = require("./Handles/EndpointRotateHandles")
 local AddHandles = require("./Handles/AddHandles")
@@ -898,6 +899,7 @@ local function createRoadSession(plugin: Plugin)
 	local intersectionDrag: {
 		Model: Model,
 		StartPivot: CFrame,
+		StartAngle: number,
 		Connected: { IntersectionConnection },
 	}? = nil
 
@@ -916,13 +918,39 @@ local function createRoadSession(plugin: Plugin)
 				})
 			end
 		end
+		local startAngle = selected.Segment.Model:GetAttribute("IntersectionAngle")
 		intersectionDrag = {
 			Model = selected.Segment.Model,
 			StartPivot = selected.Segment.Model:GetPivot(),
+			StartAngle = if typeof(startAngle) == "number" then startAngle else 90,
 			Connected = connected,
 		}
 		gestureActive = true
 		beginRecording("Move Intersection")
+	end
+
+	-- Re-seat each connected road end onto its (possibly moved) exit
+	local function reseatConnectedEnds(state: typeof(intersectionDrag))
+		if not state then
+			return
+		end
+		local info = RoadMath.getSegmentInfo(state.Model)
+		if not info then
+			return
+		end
+		for _, conn in state.Connected do
+			local exit = RoadMath.getEndpoint(info, conn.EndId)
+			local roadInfo = RoadMath.getSegmentInfo(conn.Ref.Model)
+			if roadInfo then
+				local ok, err = pcall(function()
+					applySolutionToRef(conn.Ref, RoadMath.solveMove(roadInfo, conn.Ref.Id, exit.WorldCFrame.Position))
+				end)
+				if not ok then
+					warn("RoadHelper: Connected road follow failed: " .. tostring(err))
+				end
+				alignEndFaceToMate(conn.Ref, exit)
+			end
+		end
 	end
 
 	local function applyIntersectionTransform(pivot: CFrame)
@@ -931,23 +959,7 @@ local function createRoadSession(plugin: Plugin)
 			return
 		end
 		state.Model:PivotTo(pivot)
-		local info = RoadMath.getSegmentInfo(state.Model)
-		if info then
-			-- Re-seat each connected road end onto its (moved) exit
-			for _, conn in state.Connected do
-				local exit = RoadMath.getEndpoint(info, conn.EndId)
-				local roadInfo = RoadMath.getSegmentInfo(conn.Ref.Model)
-				if roadInfo then
-					local ok, err = pcall(function()
-						applySolutionToRef(conn.Ref, RoadMath.solveMove(roadInfo, conn.Ref.Id, exit.WorldCFrame.Position))
-					end)
-					if not ok then
-						warn("RoadHelper: Connected road follow failed: " .. tostring(err))
-					end
-					alignEndFaceToMate(conn.Ref, exit)
-				end
-			end
-		end
+		reseatConnectedEnds(state)
 		changeSignal:Fire()
 	end
 
@@ -1170,6 +1182,41 @@ local function createRoadSession(plugin: Plugin)
 				local position = state.StartPivot.Position
 				local yaw = CFrame.fromAxisAngle(Vector3.yAxis, math.rad(deltaDegrees))
 				applyIntersectionTransform(CFrame.new(position) * yaw * state.StartPivot.Rotation)
+			end,
+			EndRotate = endIntersectionTransform,
+		}),
+		-- Partial ring adjusting the intersection's angle (how much the X
+		-- road is skewed), with its grabber sitting over the X road
+		EndpointRotateHandles.new(draggerContext, {
+			Axes = { "Dir" },
+			View = PartialRotateHandleView,
+			RadiusOffset = 0.35,
+			GetAngleOffset = function()
+				local endpoint = getSelectedEndpoint()
+				if endpoint and endpoint.Segment.Kind == "Intersection" then
+					return (endpoint.Segment.Angle or math.pi / 2) + math.pi / 2
+				end
+				return 0
+			end,
+			GetEndpointCFrame = function()
+				local endpoint = getSelectedEndpoint()
+				if endpoint and endpoint.Segment.Kind == "Intersection" then
+					return endpoint.Segment.Model:GetPivot()
+				end
+				return nil
+			end,
+			StartRotate = startIntersectionTransform,
+			ApplyRotate = function(axis: RoadMath.AdjustAxis, deltaDegrees: number)
+				local state = intersectionDrag
+				if not state then
+					return
+				end
+				local newAngle = math.clamp(math.round((state.StartAngle + deltaDegrees) * 10) / 10, 25, 155)
+				if state.Model:GetAttribute("IntersectionAngle") ~= newAngle then
+					state.Model:SetAttribute("IntersectionAngle", newAngle)
+					reseatConnectedEnds(state)
+				end
+				changeSignal:Fire()
 			end,
 			EndRotate = endIntersectionTransform,
 		}),
