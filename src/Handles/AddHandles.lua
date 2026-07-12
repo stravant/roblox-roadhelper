@@ -131,8 +131,8 @@ function AddHandles:render(hoveredHandleId)
 			local coneSize = size * 0.75
 			local dirs = {
 				handle.Outward,
-				(handle.Outward + handle.Right).Unit,
-				(handle.Outward - handle.Right).Unit,
+				handle.Right,
+				-handle.Right,
 			}
 			for i, dir in dirs do
 				children[handleId .. i] = Roact.createElement("ConeHandleAdornment", {
