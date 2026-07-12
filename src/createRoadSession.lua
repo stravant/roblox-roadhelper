@@ -371,7 +371,7 @@ local function createRoadSession(plugin: Plugin)
 		position: Vector3,
 		movingModels: { Model },
 		excludeEndpoint: EndpointRef?
-	): Vector3
+	): (Vector3, RoadMath.Endpoint?)
 		local excludeSet: { [Model]: boolean } = {}
 		local exclusions: { Instance } = {}
 		for _, model in movingModels do
@@ -405,7 +405,10 @@ local function createRoadSession(plugin: Plugin)
 				end
 			end
 		end
-		return if best then best.WorldCFrame.Position else position
+		if best then
+			return best.WorldCFrame.Position, best
+		end
+		return position, nil
 	end
 
 	--------------------------------------------------------------------------
@@ -544,19 +547,74 @@ local function createRoadSession(plugin: Plugin)
 		end
 	end
 
+	local function setAdjustAttribute(model: Model, id: RoadMath.EndpointId, axis: RoadMath.AdjustAxis, value: number)
+		local name = RoadMath.adjustAttributeName(id, axis)
+		local current = model:GetAttribute(name)
+		if current ~= value and not (current == nil and value == 0) then
+			model:SetAttribute(name, value)
+		end
+	end
+
+	local function captureAdjust(ref: EndpointRef): { [RoadMath.AdjustAxis]: number }
+		local values = {}
+		for _, axis in ADJUST_AXES do
+			local value = ref.Model:GetAttribute(RoadMath.adjustAttributeName(ref.Id, axis))
+			values[axis] = if typeof(value) == "number" then value else 0
+		end
+		return values
+	end
+
+	local function restoreAdjust(ref: EndpointRef, saved: { [RoadMath.AdjustAxis]: number })
+		for axis, value in saved do
+			setAdjustAttribute(ref.Model, ref.Id, axis :: RoadMath.AdjustAxis, value)
+		end
+	end
+
+	-- When a dragged road end snaps onto an intersection's (possibly angled)
+	-- open end, rotate the road's end face to mate flush: its Dir adjust
+	-- takes up the intersection angle and its grade/bank flatten out.
+	local function alignEndFaceToMate(ref: EndpointRef, mate: RoadMath.Endpoint)
+		local info = RoadMath.getSegmentInfo(ref.Model)
+		if not info or info.Kind == "Intersection" then
+			return
+		end
+		local endpoint = RoadMath.getEndpoint(info, ref.Id)
+		local up = endpoint.WorldCFrame.UpVector
+		local nominal = endpoint.WorldCFrame.LookVector
+		local desired = -mate.WorldCFrame.LookVector
+		local n = nominal - up * nominal:Dot(up)
+		local d = desired - up * desired:Dot(up)
+		if n.Magnitude < 1e-4 or d.Magnitude < 1e-4 then
+			return
+		end
+		n, d = n.Unit, d.Unit
+		local angle = math.deg(math.atan2(n:Cross(d):Dot(up), n:Dot(d)))
+		angle = math.round(angle * 100) / 100
+		setAdjustAttribute(ref.Model, ref.Id, "Dir", angle / RoadMath.flipFactor(info, "Dir"))
+		setAdjustAttribute(ref.Model, ref.Id, "Grade", 0)
+		setAdjustAttribute(ref.Model, ref.Id, "Bank", 0)
+	end
+
 	-- Move targets are captured at drag start: the selected end plus the mated
 	-- partner end if the endpoint is closed.
 	local moveTargets: { EndpointRef } = {}
+	local moveOriginalAdjust: { [RoadMath.AdjustAxis]: number }? = nil
 
 	local function startMove()
 		moveTargets = {}
+		moveOriginalAdjust = nil
 		local selected = getSelectedEndpoint()
 		if not selected then
 			return
 		end
 		table.insert(moveTargets, { Model = selected.Segment.Model, Id = selected.Id })
+		if selected.Segment.Kind ~= "Intersection" then
+			moveOriginalAdjust = captureAdjust(moveTargets[1])
+		end
 		local partner = getPartnerEndpoint()
-		if partner then
+		-- An intersection partner is never moved or resized by a road end
+		-- drag; the road end simply detaches from it
+		if partner and partner.Segment.Kind ~= "Intersection" then
 			table.insert(moveTargets, { Model = partner.Segment.Model, Id = partner.Id })
 		end
 		gestureActive = true
@@ -564,12 +622,13 @@ local function createRoadSession(plugin: Plugin)
 	end
 
 	local function applyMove(newWorldPosition: Vector3, snapToEnds: boolean?)
+		local snapMate: RoadMath.Endpoint? = nil
 		if snapToEnds then
 			local movingModels = {}
 			for _, target in moveTargets do
 				table.insert(movingModels, target.Model)
 			end
-			newWorldPosition = snapToOpenEndpoint(newWorldPosition, movingModels, nil)
+			newWorldPosition, snapMate = snapToOpenEndpoint(newWorldPosition, movingModels, nil)
 		end
 		for _, target in moveTargets do
 			local info = RoadMath.getSegmentInfo(target.Model)
@@ -582,11 +641,20 @@ local function createRoadSession(plugin: Plugin)
 				end
 			end
 		end
+		local dragged = moveTargets[1]
+		if dragged and moveOriginalAdjust then
+			if snapMate and snapMate.Segment.Kind == "Intersection" then
+				alignEndFaceToMate(dragged, snapMate)
+			else
+				restoreAdjust(dragged, moveOriginalAdjust)
+			end
+		end
 		changeSignal:Fire()
 	end
 
 	local function endMove()
 		moveTargets = {}
+		moveOriginalAdjust = nil
 		finishRecording()
 		gestureActive = false
 		updateDragger()
@@ -624,7 +692,8 @@ local function createRoadSession(plugin: Plugin)
 		end
 		table.insert(rotateTargets, captureRotateTarget(selected, selected))
 		local partner = getPartnerEndpoint()
-		if partner then
+		-- Intersections have no adjust angles to keep in sync
+		if partner and partner.Segment.Kind ~= "Intersection" then
 			table.insert(rotateTargets, captureRotateTarget(selected, partner))
 		end
 		gestureActive = true
@@ -748,6 +817,7 @@ local function createRoadSession(plugin: Plugin)
 	-- Add-drag state (from AddHandles)
 	local addDragRef: EndpointRef? = nil
 	local addSourceRef: EndpointRef? = nil
+	local addDragOriginalAdjust: { [RoadMath.AdjustAxis]: number }? = nil
 	local addBeforeSelection: SelectionSnapshot = nil
 
 	local function startAdd(turn: RoadMath.TurnDirection): number?
@@ -765,6 +835,7 @@ local function createRoadSession(plugin: Plugin)
 			return nil
 		end
 		addDragRef = { Model = newModel, Id = farId }
+		addDragOriginalAdjust = captureAdjust(addDragRef :: any)
 		addSourceRef = { Model = selected.Segment.Model, Id = selected.Id }
 		selectedRef = addDragRef
 		changeSignal:Fire()
@@ -779,7 +850,8 @@ local function createRoadSession(plugin: Plugin)
 		end
 		-- Snap onto nearby open ends, but never back onto the endpoint this
 		-- segment was just added to (that would make it degenerate)
-		worldPosition = snapToOpenEndpoint(worldPosition, { ref.Model }, addSourceRef)
+		local snapMate: RoadMath.Endpoint? = nil
+		worldPosition, snapMate = snapToOpenEndpoint(worldPosition, { ref.Model }, addSourceRef)
 		local info = RoadMath.getSegmentInfo(ref.Model)
 		if info then
 			local ok, err = pcall(function()
@@ -789,12 +861,20 @@ local function createRoadSession(plugin: Plugin)
 				warn("RoadHelper: Segment placement failed: " .. tostring(err))
 			end
 		end
+		if addDragOriginalAdjust then
+			if snapMate and snapMate.Segment.Kind == "Intersection" then
+				alignEndFaceToMate(ref, snapMate)
+			else
+				restoreAdjust(ref, addDragOriginalAdjust)
+			end
+		end
 		changeSignal:Fire()
 	end
 
 	local function endAdd()
 		addDragRef = nil
 		addSourceRef = nil
+		addDragOriginalAdjust = nil
 		if activeRecordingName then
 			pushSelectionHistory(activeRecordingName, addBeforeSelection, snapshotSelection())
 		end
