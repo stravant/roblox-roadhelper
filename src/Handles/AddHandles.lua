@@ -73,6 +73,11 @@ function AddHandles:update(draggerToolModel, selectionInfo)
 	local scale = self._draggerContext:getHandleScale(frame.Position)
 	local handles = {}
 	for handleId, def in AddHandleDefinitions do
+		-- Two intersections directly against each other makes no sense, so
+		-- intersection exits don't offer the intersection extension
+		if def.Turn == "Intersection" and endpoint.Segment.Kind == "Intersection" then
+			continue
+		end
 		local position = frame.Position
 			+ outward * (def.Ahead * scale)
 			+ right * (def.Aside * scale)
