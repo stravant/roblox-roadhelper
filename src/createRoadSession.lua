@@ -992,7 +992,6 @@ local function createRoadSession(plugin: Plugin)
 	local intersectionAdd: {
 		Model: Model,
 		StartPivot: CFrame,
-		ExitStart: Vector3,
 		SourceRef: EndpointRef,
 	}? = nil
 
@@ -1014,7 +1013,6 @@ local function createRoadSession(plugin: Plugin)
 			intersectionAdd = {
 				Model = newModel,
 				StartPivot = newModel:GetPivot(),
-				ExitStart = selected.WorldCFrame.Position,
 				SourceRef = { Model = selected.Segment.Model, Id = selected.Id },
 			}
 			-- Select the opposite exit, ready to keep extending
@@ -1041,13 +1039,16 @@ local function createRoadSession(plugin: Plugin)
 	local function applyAddDrag(worldPosition: Vector3)
 		local ix = intersectionAdd
 		if ix then
-			-- Move the intersection so its mating exit follows the cursor,
-			-- dragging the extended road end along with it
-			ix.Model:PivotTo(ix.StartPivot + (worldPosition - ix.ExitStart))
+			-- Drag by the intersection's CENTRE: the cursor positions the
+			-- middle of the box, and the extended road end follows the
+			-- mating exit wherever it lands
+			ix.Model:PivotTo(ix.StartPivot.Rotation + worldPosition)
+			local ixInfo = RoadMath.getSegmentInfo(ix.Model)
 			local roadInfo = RoadMath.getSegmentInfo(ix.SourceRef.Model)
-			if roadInfo then
+			if ixInfo and roadInfo then
+				local exit = RoadMath.getEndpoint(ixInfo, "ZMinus")
 				local ok, err = pcall(function()
-					applySolutionToRef(ix.SourceRef, RoadMath.solveMove(roadInfo, ix.SourceRef.Id, worldPosition))
+					applySolutionToRef(ix.SourceRef, RoadMath.solveMove(roadInfo, ix.SourceRef.Id, exit.WorldCFrame.Position))
 				end)
 				if not ok then
 					warn("RoadHelper: Intersection placement failed: " .. tostring(err))
