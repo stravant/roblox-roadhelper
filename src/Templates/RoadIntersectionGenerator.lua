@@ -22,6 +22,7 @@ local defaultAttributes = {
 	IntersectionAngle = 90,
 	MaxAngle = 10,
 	ThroughRoad = true,
+	CrossingWidth = 0,
 	Blend = false,
 	BlendColor = Color3.fromRGB(66, 102, 12),
 	BlendMaterial = Enum.Material.Grass,
@@ -57,6 +58,9 @@ local STOP_LINE_WIDTH = 2
 -- The stop bar sits this far in from each open end, so the bounding box
 -- controls how much open turning space the middle of the intersection has
 local STOP_LINE_END_DISTANCE = 12
+-- Crosswalk stripe width/spacing, and its gap to the stop bar
+local CROSSWALK_STRIPE = 2
+local CROSSWALK_GAP = 2
 
 local function createPart(name, color, material, size, cframe)
 	local part = Instance.new("Part")
@@ -128,6 +132,7 @@ local Generator: GeneratorModuleDefinition<typeof(defaultAttributes)> = {
 		local roadMaterialVariant = if roadMaterial == ROAD_MATERIAL then ROAD_MATERIAL_VARIANT else ""
 
 		local maxAngle = math.rad(attributes.MaxAngle or 10)
+		local crossingWidth = math.max(attributes.CrossingWidth or 0, 0)
 
 		local function at(p: Vector3, h: number): Vector3
 			return Vector3.new(p.X, bottom + h, p.Z)
@@ -498,7 +503,9 @@ local Generator: GeneratorModuleDefinition<typeof(defaultAttributes)> = {
 					-- so a bigger box leaves more open pavement in the middle
 					local tCutMin = math.max(tInnerAt(-edgeLine), tInnerAt(edgeLine)) + MARK_SETBACK
 					local tEnd = faceDistFn(0, s)
-					local tBar = math.max(tEnd - STOP_LINE_END_DISTANCE, tCutMin + STOP_LINE_WIDTH / 2)
+					-- A crosswalk claims its space in front of the stop line
+					local crossingSpace = if crossingWidth > 0 then crossingWidth + CROSSWALK_GAP else 0
+					local tBar = math.max(tEnd - STOP_LINE_END_DISTANCE, tCutMin + STOP_LINE_WIDTH / 2 + crossingSpace)
 					local tMarks = tBar + STOP_LINE_WIDTH / 2 + 1
 					for _, marking in markings do
 						if skipEdgeLatSide and marking.isEdge and math.sign(marking.lat) == skipEdgeLatSide then
@@ -523,6 +530,18 @@ local Generator: GeneratorModuleDefinition<typeof(defaultAttributes)> = {
 					local latA = latSign * (CENTER_OFFSET + 1)
 					local latB = latSign * (edgeLine - 1.5)
 					markingStrip(n * latA + dir * tBar, n * latB + dir * tBar, laneMarkingColor, STOP_LINE_WIDTH)
+					if crossingWidth > 0 then
+						-- Zebra crosswalk between the stop bar and the
+						-- junction, spanning the full drivable width
+						local walkFar = tBar - STOP_LINE_WIDTH / 2 - CROSSWALK_GAP
+						local walkNear = walkFar - crossingWidth
+						local span = edgeLine - 1.5
+						local lat = -span + CROSSWALK_STRIPE / 2
+						while lat <= span - CROSSWALK_STRIPE / 2 do
+							markingStrip(n * lat + dir * walkNear, n * lat + dir * walkFar, laneMarkingColor, CROSSWALK_STRIPE)
+							lat += CROSSWALK_STRIPE * 2
+						end
+					end
 				end
 			end
 
