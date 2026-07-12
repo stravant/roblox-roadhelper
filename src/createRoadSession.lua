@@ -650,29 +650,40 @@ local function createRoadSession(plugin: Plugin)
 		end
 		local partner = getPartnerEndpoint()
 		if partner and partner.Segment.Kind == "Intersection" then
-			-- The intersection translates along with the dragged end, and its
-			-- other connected roads' ends follow its exits
-			local connected: { IntersectionConnection } = {}
-			for _, endpoint in RoadMath.allEndpoints(partner.Segment) do
-				if endpoint.Id ~= partner.Id then
-					local mate = partnerOfEndpoint(endpoint)
-					if mate
-						and mate.Segment.Kind ~= "Intersection"
-						and mate.Segment.Model ~= selected.Segment.Model
-					then
-						table.insert(connected, {
-							Ref = { Model = mate.Segment.Model, Id = mate.Id },
-							EndId = endpoint.Id,
-						})
+			-- Only carry the intersection along when the road end actually
+			-- mates the exit flush (matching angle, no grade/bank). A
+			-- mismatched end instead moves freely, so it can be free-dragged
+			-- back onto the exit to re-snap without dragging the
+			-- intersection around.
+			local facing = RoadMath.actualOutwardDirection(selected):Dot(partner.WorldCFrame.LookVector)
+			local flush = facing < -0.9994
+				and math.abs(RoadMath.getAdjustValue(selected, "Grade")) < 0.25
+				and math.abs(RoadMath.getAdjustValue(selected, "Bank")) < 0.25
+			if flush then
+				-- The intersection translates along with the dragged end, and
+				-- its other connected roads' ends follow its exits
+				local connected: { IntersectionConnection } = {}
+				for _, endpoint in RoadMath.allEndpoints(partner.Segment) do
+					if endpoint.Id ~= partner.Id then
+						local mate = partnerOfEndpoint(endpoint)
+						if mate
+							and mate.Segment.Kind ~= "Intersection"
+							and mate.Segment.Model ~= selected.Segment.Model
+						then
+							table.insert(connected, {
+								Ref = { Model = mate.Segment.Model, Id = mate.Id },
+								EndId = endpoint.Id,
+							})
+						end
 					end
 				end
+				moveIntersection = {
+					Model = partner.Segment.Model,
+					StartPivot = partner.Segment.Model:GetPivot(),
+					ExitStart = partner.WorldCFrame.Position,
+					Connected = connected,
+				}
 			end
-			moveIntersection = {
-				Model = partner.Segment.Model,
-				StartPivot = partner.Segment.Model:GetPivot(),
-				ExitStart = partner.WorldCFrame.Position,
-				Connected = connected,
-			}
 		elseif partner then
 			table.insert(moveTargets, { Model = partner.Segment.Model, Id = partner.Id })
 		end
