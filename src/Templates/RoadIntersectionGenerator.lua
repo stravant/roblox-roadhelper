@@ -409,7 +409,8 @@ local Generator: GeneratorModuleDefinition<typeof(defaultAttributes)> = {
 			stop bar across the approach lanes of each stub.
 		]]
 		if haveLaneMarkings then
-			local function markingStrip(a: Vector3, b: Vector3, color, width, textureOffset)
+			local markingCount = 0
+			local function markingStrip(a: Vector3, b: Vector3, color, width)
 				local pa, pb = at(a, hRoadTop + 0.05), at(b, hRoadTop + 0.05)
 				local len = (pb - pa).Magnitude
 				if len < 0.5 then
@@ -429,7 +430,11 @@ local Generator: GeneratorModuleDefinition<typeof(defaultAttributes)> = {
 					texture.ColorMap = "rbxassetid://127451784449848"
 					texture.StudsPerTileU = 21.4
 					texture.StudsPerTileV = width
-					texture.OffsetStudsU = textureOffset or 0
+					-- Sequence-seeded offset so consecutive strips (corner
+					-- arc chords, crosswalk stripes) don't visibly repeat the
+					-- same slice of the texture
+					markingCount += 1
+					texture.OffsetStudsU = (markingCount * 7.31) % 21.4
 					texture.Parent = part
 					part.Transparency = 1
 				end
@@ -539,11 +544,7 @@ local Generator: GeneratorModuleDefinition<typeof(defaultAttributes)> = {
 						local span = edgeLine - 1.5
 						local lat = -span + CROSSWALK_STRIPE / 2
 						while lat <= span - CROSSWALK_STRIPE / 2 do
-							-- Seeded per-stripe texture offset so adjacent
-							-- stripes don't all show the same slice of the
-							-- line texture
-							local jitter = (lat * 13.37 + s * 101.7) % 21.4
-							markingStrip(n * lat + dir * walkNear, n * lat + dir * walkFar, laneMarkingColor, CROSSWALK_STRIPE, jitter)
+							markingStrip(n * lat + dir * walkNear, n * lat + dir * walkFar, laneMarkingColor, CROSSWALK_STRIPE)
 							lat += CROSSWALK_STRIPE * 2
 						end
 					end
