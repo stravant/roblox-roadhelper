@@ -68,8 +68,9 @@ export type SelectionState = {
 	SidewalkWidth: number,
 	IntersectionAngle: number,
 	-- Nominal corner curve radius of an intersection (half the bounding box
-	-- size in excess of the roads' widths; exact at 90 degrees)
+	-- size in excess of the roads' widths and crosswalks; exact at 90 degrees)
 	CornerRadius: number,
+	CrossingWidth: number,
 }
 
 local function createFixedSelection(onCleared: () -> ())
@@ -1700,7 +1701,9 @@ local function createRoadSession(plugin: Plugin)
 			LaneWidth = (selected.Segment.Model:GetAttribute("LaneWidth" .. laneAxisSuffix) :: number?) or 24,
 			SidewalkWidth = (selected.Segment.Model:GetAttribute("SidewalkWidth") :: number?) or 8,
 			IntersectionAngle = (selected.Segment.Model:GetAttribute("IntersectionAngle") :: number?) or 90,
-			CornerRadius = math.round((selected.Segment.Size.X - selected.Segment.Width) * 50) / 100,
+			CornerRadius = math.round((selected.Segment.Size.X - selected.Segment.Width
+				- 2 * ((selected.Segment.Model:GetAttribute("CrossingWidth") :: number?) or 0)) * 50) / 100,
+			CrossingWidth = (selected.Segment.Model:GetAttribute("CrossingWidth") :: number?) or 0,
 		} :: any
 	end
 
@@ -1770,12 +1773,23 @@ local function createRoadSession(plugin: Plugin)
 			beginRecording("Resize Intersection")
 			if name == "CornerRadius" then
 				-- The corner curve radius maps to box size: each side of a
-				-- road gets one radius' worth of excess space, so the corner
-				-- fillets come out at (about) the requested radius
-				local margin = 2 * math.max(value, 0)
+				-- road gets one radius' worth of excess space (on top of any
+				-- crosswalk allocation), so the corner fillets come out at
+				-- (about) the requested radius
+				local crossing = (model:GetAttribute("CrossingWidth") :: number?) or 0
+				local margin = 2 * math.max(value, 0) + 2 * math.max(crossing, 0)
 				local wZ, wX = roadWidths()
 				local size = (model :: any).Size :: Vector3
 				;(model :: any).Size = Vector3.new(wZ + margin, size.Y, wX + margin)
+			elseif name == "CrossingWidth" then
+				-- Crosswalks claim space at both ends of each road, so the
+				-- box grows by twice the width change on both axes
+				local newWidth = math.max(value, 0)
+				local oldWidth = (model:GetAttribute("CrossingWidth") :: number?) or 0
+				local delta = 2 * (newWidth - oldWidth)
+				model:SetAttribute("CrossingWidth", newWidth)
+				local size = (model :: any).Size :: Vector3
+				;(model :: any).Size = Vector3.new(size.X + delta, size.Y, size.Z + delta)
 			else
 				local attrName = if name == "SidewalkWidth" then "SidewalkWidth" else name .. axis
 				local oldWZ, oldWX = roadWidths()

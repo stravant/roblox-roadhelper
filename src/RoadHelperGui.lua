@@ -361,6 +361,23 @@ local function SizingPanel(props: {
 				end,
 			}),
 		}),
+		CrossingWidthInput = if (state :: any).SegmentKind == "Intersection"
+			then e(HelpGui.WithHelpIcon, {
+				Help = e(HelpGui.BasicTooltip, {
+					HelpRichText = "Width of the zebra crosswalks in front of the stop lines. Zero removes them. The bounding box grows to make room, so the turning space is kept.",
+				}),
+				LayoutOrder = 5,
+				Subject = e(NumberInput, {
+					Label = "Crosswalk Width",
+					Value = (state :: any).CrossingWidth,
+					ValueEntered = function(value: number): number?
+						local width = math.max(value, 0)
+						props.SetSizing("CrossingWidth", width)
+						return width
+					end,
+				}),
+			})
+			else nil,
 		CornerRadiusInput = if (state :: any).SegmentKind == "Intersection"
 			then e(HelpGui.WithHelpIcon, {
 				Help = e(HelpGui.BasicTooltip, {
